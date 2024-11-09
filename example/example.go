@@ -11,7 +11,7 @@ func fetchOpenGraphTags() {
 	z := func(p *parseur.Parser) {
 		q := p.First("head")
 
-		if q == nil { // this makes sure we get all the tags
+		if q == nil || q.Body.End == parseur.PARSING { // this makes sure we get all the tags
 			return
 		}
 
@@ -24,9 +24,7 @@ func fetchOpenGraphTags() {
 				}
 				println(u.Attributes["content"])
 			}
-
 		}
-
 	}
 
 	_, err := client.FetchParseAsync("https://www.youtube.com/watch?v=pQO1t2Y627Y", &z)

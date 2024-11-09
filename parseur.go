@@ -13,6 +13,11 @@ import (
 	"sync"
 )
 
+const (
+	FAILED  = -1
+	PARSING = 0
+)
+
 type ExtJar struct {
 	jar  *cookiejar.Jar
 	urls map[string]struct{}
@@ -69,7 +74,7 @@ type Tag struct {
 
 type Parser struct {
 	Mu            sync.Mutex
-	parsed        map[int]*Tag
+	offsetMap     map[int]*Tag
 	body          *[]byte
 	Complete      *bool
 	Done          bool
@@ -84,7 +89,7 @@ type Parser struct {
 	success       bool
 	Logs          []Log
 	InBound       func(int) bool
-	Parsed        func() []*Tag
+	OffsetList    func() []*Tag
 	DataChan      chan *[]byte
 	ParseComplete chan struct{}
 	hook          *func(parser *Parser)
@@ -188,7 +193,7 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 }
 
 func (p *Parser) First(name string) *Tag {
-	for _, tag := range p.parsed {
+	for _, tag := range p.offsetMap {
 		if tag.Name == name {
 			return tag
 		}
@@ -200,7 +205,7 @@ func (p *Parser) First(name string) *Tag {
 func (p *Parser) Filter(name string) []*Tag {
 	tags := make([]*Tag, 0)
 
-	for _, tag := range p.parsed {
+	for _, tag := range p.offsetMap {
 		if tag.Name == name {
 			tags = append(tags, tag)
 		}
@@ -250,7 +255,7 @@ func (p *Parser) Async(index int) bool {
 func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 	complete := false
 	parser := &Parser{
-		parsed:     make(map[int]*Tag),
+		offsetMap:  make(map[int]*Tag),
 		body:       body,
 		Complete:   &complete,
 		Mu:         sync.Mutex{},
@@ -261,7 +266,7 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 		hook:       hook,
 	}
 
-	parser.Parsed = parser.computeParsed
+	parser.OffsetList = parser.computeOffsetList
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
 	parser.lastIndex = 0
 	parser.Logs = make([]Log, 0)
@@ -472,7 +477,7 @@ func (p *Parser) consumeTag(index int) int {
 		return -1
 	}
 
-	tag, ok := p.parsed[offset]
+	tag, ok := p.offsetMap[offset]
 
 	if ok {
 		if tag.Body.End == -1 {
@@ -508,11 +513,15 @@ func (p *Parser) consumeTag(index int) int {
 
 	if p.isMETAorLINKtag(self) {
 		currentIndex = p.handleSelfclosing(currentIndex)
+		p.offsetMap[offset] = self
 		p.current.Body = Offset{offset, currentIndex}
 	} else if isEndOfTag {
+		p.offsetMap[offset] = self
 		currentIndex += 2
 	} else if (*p.body)[currentIndex] == '>' {
+		p.offsetMap[offset] = self
 		index = currentIndex
+
 		if self.Name != "script" {
 			currentIndex = p.parseRegularBody(currentIndex)
 		} else {
@@ -521,7 +530,6 @@ func (p *Parser) consumeTag(index int) int {
 
 		if currentIndex == -1 {
 			p.current.Body = Offset{offset, -1}
-			p.parsed[offset] = p.current
 
 			return index + 1
 		}
@@ -530,7 +538,6 @@ func (p *Parser) consumeTag(index int) int {
 	}
 
 	parent.Children = append(parent.Children, self)
-	p.parsed[offset] = self
 	p.current = parent
 
 	return p.updatePointer(currentIndex)
@@ -858,15 +865,15 @@ func (p *Parser) isValidTagChar(index int) bool {
 	return ('0' <= r && r <= '9') || ('A' <= r && r <= 'Z') || ('a' <= r && r <= 'z') || (r == '-')
 }
 
-func (p *Parser) computeParsed() []*Tag {
-	t := make([]*Tag, 0, len(p.parsed))
+func (p *Parser) computeOffsetList() []*Tag {
+	t := make([]*Tag, 0, len(p.offsetMap))
 
-	for _, tag := range p.parsed {
+	for _, tag := range p.offsetMap {
 		t = append(t, tag)
 	}
 
 	if p.Done {
-		p.Parsed = func() []*Tag {
+		p.OffsetList = func() []*Tag {
 			return t
 		}
 	}
