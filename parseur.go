@@ -510,7 +510,6 @@ func (p *Parser) consumeTag(index int) int {
 			index = currentIndex
 		}
 
-		parent.Children = append(parent.Children, tag)
 		p.current = parent
 
 		return index
@@ -546,7 +545,7 @@ func (p *Parser) consumeTag(index int) int {
 
 		if currentIndex == -1 {
 			p.current.Body = Offset{offset, -1}
-
+			parent.Children = append(parent.Children, p.current.Children...)
 			return index + 1
 		}
 	} else {
