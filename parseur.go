@@ -48,6 +48,49 @@ func NewClient() *WebClient {
 	}
 }
 
+type Query struct {
+	query  string
+	tags   *[]*Tag
+	parser *Parser
+}
+
+func (p *Parser) Query(query string) *Query {
+	q := Query{query: query, parser: p}
+	return &q
+}
+
+func (q *Query) Intersect(query *Query) *Query {
+	queryIntersection := Query{
+		parser: q.parser,
+		query:  q.query + " + " + query.query,
+		tags:   GetIntersection(q.GetTags(), query.GetTags()),
+	}
+
+	return &queryIntersection
+}
+
+func (q *Query) GetTags() *[]*Tag {
+	if q.tags == nil {
+		q.execute()
+	}
+	return q.tags
+}
+
+func (q *Query) execute() *Query {
+	if q.tags != nil {
+		return q
+	}
+
+	if q.parser == nil {
+		log.Fatal("q.parser == nil")
+		return q
+	}
+
+	q.tags = q.parser.GetTags(q.query)
+
+	return q
+}
+
 type WebClient struct {
 	chunkSize int
 	client    *http.Client
@@ -92,6 +135,10 @@ type Parser struct {
 }
 
 func GetIntersection(a *[]*Tag, b *[]*Tag) *[]*Tag {
+	if a == nil || b == nil {
+		return nil
+	}
+
 	length := int(math.Min(float64(len(*a)), float64(len(*b))))
 	tagMap := make(map[*Tag]struct{}, length)
 	result := make([]*Tag, 0, length)

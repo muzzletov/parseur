@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+func TestQuery(t *testing.T) {
+	payload := []byte(`
+		<div class="rofl">fsdjkdksfdjskjkdfs</div>
+		gffgdfgd
+		<div class="lol">fsdjkdksfdjskjkdfs</div>
+		`)
+
+	p := NewParser(&payload, false, nil)
+	result := p.Query("div").Intersect(p.Query(".lol")).GetTags()
+
+	if result == nil ||
+		len(*result) != 1 {
+		log.Fatal("query result length incorrect")
+	}
+}
+
 func TestIntersection(t *testing.T) {
 	a := Tag{Name: "a"}
 	b := Tag{Name: "b"}
