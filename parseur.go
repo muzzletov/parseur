@@ -85,7 +85,7 @@ type Parser struct {
 	ParseComplete chan struct{}
 	offsetMap     map[int]*Tag
 	namespaces    map[string]string
-	tagMap        map[string][]*Tag
+	tagMap        map[string]*[]*Tag
 	InBound       func(int) bool
 	OffsetList    func() []*Tag
 	Mu            sync.Mutex
@@ -278,7 +278,7 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 		length:     len(*body),
 		async:      async,
 		hook:       hook,
-		tagMap:     make(map[string][]*Tag),
+		tagMap:     make(map[string]*[]*Tag),
 	}
 
 	parser.OffsetList = parser.computeOffsetList
@@ -560,10 +560,10 @@ func (p *Parser) consumeTag(index int) int {
 
 func (p *Parser) addTag(id string, item *Tag) {
 	if _, ok := p.tagMap[id]; ok {
-		p.tagMap[id] = append(p.tagMap[id], item)
+		*p.tagMap[id] = append(*p.tagMap[id], item)
 	} else {
-		p.tagMap[id] = make([]*Tag, 1)
-		p.tagMap[id][0] = item
+		list := []*Tag{item}
+		p.tagMap[id] = &list
 	}
 }
 
@@ -674,19 +674,15 @@ func (p *Parser) parseTagName(index int) int {
 	return p.updatePointer(currentIndex)
 }
 
-func (p *Parser) addOffsets(start int, end int) {
-	p.current.Body = Offset{start, end}
-}
-
 func (p *Parser) parseBody(index int) int {
 	if !p.InBound(index) {
-		p.addOffsets(index, -1)
+		p.current.addOffsets(index, -1)
 		return -1
 	}
 
 	offset := index
 	currentIndex := index
-	name := p.current.Name
+	self := p.current
 
 	for index != -1 && p.InBound(index) {
 
@@ -702,10 +698,10 @@ func (p *Parser) parseBody(index int) int {
 			continue
 		}
 
-		index = p.parseTagEnd(currentIndex, name)
+		index = p.parseTagEnd(currentIndex, self.Name)
 
 		if index != -1 {
-			p.addOffsets(offset, index)
+			self.addOffsets(offset, currentIndex)
 			return index
 		}
 
@@ -718,9 +714,13 @@ func (p *Parser) parseBody(index int) int {
 		index = currentIndex + 1
 	}
 
-	p.addOffsets(offset, -1)
+	self.addOffsets(offset, -1)
 
 	return -1
+}
+
+func (t *Tag) addOffsets(start int, end int) {
+	t.Body = Offset{start, end}
 }
 
 func (p *Parser) consumeComment(index int) int {
@@ -855,8 +855,7 @@ func (p *Parser) addClasses(attr string) {
 }
 
 func (p *Parser) GetTags(query string) *[]*Tag {
-	result := p.tagMap[query]
-	return &result
+	return p.tagMap[query]
 }
 
 func (p *Parser) ffLetter(index int) bool {

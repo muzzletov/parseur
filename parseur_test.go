@@ -27,9 +27,29 @@ func TestIntersection(t *testing.T) {
 	}
 }
 
+func TestBody(t *testing.T) {
+	payload := "<div>fsdjkdksfdjskjkdfs</div>"
+	body := []byte(payload)
+
+	tag := NewParser(&body, false, nil).First("div")
+
+	if payload[(*tag).Body.Start:(*tag).Body.End] != payload[5:23] {
+		log.Fatal("payload offset wrong")
+	}
+
+	payload = "<div></div>"
+	body = []byte(payload)
+
+	tag = NewParser(&body, false, nil).First("div")
+
+	if payload[(*tag).Body.Start:(*tag).Body.End] != "" {
+		log.Fatal("payload offset wrong")
+	}
+}
+
 func TestClasses(t *testing.T) {
 	current := Tag{Attributes: map[string]string{"class": "a rofl lol rofl"}}
-	parser := Parser{length: 12, tagMap: map[string][]*Tag{}, current: &current}
+	parser := Parser{length: 12, tagMap: map[string]*[]*Tag{}, current: &current}
 	parser.addClasses(current.Attributes["class"])
 	tags, ok := parser.tagMap[".a"]
 	check(tags, &current, ok)
@@ -42,12 +62,12 @@ func TestClasses(t *testing.T) {
 	}
 }
 
-func check(tags []*Tag, tag *Tag, ok bool) {
+func check(tags *[]*Tag, tag *Tag, ok bool) {
 	if !ok {
 		log.Fatal("element not part of map")
 	}
 
-	for _, t := range tags {
+	for _, t := range *tags {
 		if t == tag {
 			return
 		}
