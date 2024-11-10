@@ -59,6 +59,31 @@ func (p *Parser) Query(query string) *Query {
 	return &q
 }
 
+func (q *Query) Last() *Tag {
+	tags := q.GetTags()
+
+	if tags == nil {
+		return nil
+	}
+
+	length := len(*tags)
+
+	if length == 0 {
+		return nil
+	}
+
+	return (*tags)[length-1]
+}
+
+func (q *Query) First() *Tag {
+	tags := q.GetTags()
+
+	if tags == nil || len(*tags) == 0 {
+		return nil
+	}
+	return (*tags)[0]
+}
+
 func (q *Query) Intersect(query *Query) *Query {
 	queryIntersection := Query{
 		parser: q.parser,

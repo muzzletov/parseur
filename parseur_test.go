@@ -6,11 +6,7 @@ import (
 )
 
 func TestQuery(t *testing.T) {
-	payload := []byte(`
-		<div class="rofl">fsdjkdksfdjskjkdfs</div>
-		gffgdfgd
-		<div class="lol">fsdjkdksfdjskjkdfs</div>
-		`)
+	payload := []byte(`<div class="rofl">Hi!</div>How are you?<div class="lol">Bye.</div><span class="rofl"></span>`)
 
 	p := NewParser(&payload, false, nil)
 	result := p.Query("div").Intersect(p.Query(".lol")).GetTags()
@@ -18,6 +14,23 @@ func TestQuery(t *testing.T) {
 	if result == nil ||
 		len(*result) != 1 {
 		log.Fatal("query result length incorrect")
+	}
+
+	if p.GetRoot().Children[0] != p.Query("div").First() ||
+		p.GetRoot().Children[1] != p.Query("div").Last() {
+		log.Fatal("wrong elements returned")
+	}
+
+	if p.Query("span").First() != p.Query("span").Last() {
+		log.Fatal("wrong elements returned")
+	}
+
+	if p.Query("body").First() != nil {
+		log.Fatal("wrong elements returned")
+	}
+
+	if p.Query(".rofl").Last() != p.Query("span").Last() {
+		log.Fatal("wrong elements returned")
 	}
 }
 
