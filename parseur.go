@@ -300,7 +300,7 @@ func (p *Parser) Filter(name string) []*Tag {
 	return tags
 }
 
-func (t *Tag) FindAll(name string) []*Tag {
+func (t *Tag) FindAll(name string) *[]*Tag {
 	children := make([]*Tag, 0)
 
 	for _, c := range t.Children {
@@ -308,10 +308,10 @@ func (t *Tag) FindAll(name string) []*Tag {
 			children = append(children, c)
 		}
 
-		children = append(children, c.FindAll(name)...)
+		children = append(children, *c.FindAll(name)...)
 	}
 
-	return children
+	return &children
 }
 
 func (p *Parser) Sync(index int) bool {
