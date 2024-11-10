@@ -91,7 +91,7 @@ type Parser struct {
 	Mu            sync.Mutex
 }
 
-func (p *Parser) intersect(a *[]*Tag, b *[]*Tag) *[]*Tag {
+func GetIntersection(a *[]*Tag, b *[]*Tag) *[]*Tag {
 	length := int(math.Min(float64(len(*a)), float64(len(*b))))
 	tagMap := make(map[*Tag]struct{}, length)
 	result := make([]*Tag, 0, length)
@@ -853,6 +853,11 @@ func (p *Parser) addClasses(attr string) {
 		id := "." + attr[k:i]
 		p.addTag(id, p.current)
 	}
+}
+
+func (p *Parser) GetTags(query string) *[]*Tag {
+	result := p.tagMap[query]
+	return &result
 }
 
 func (p *Parser) ffLetter(index int) bool {

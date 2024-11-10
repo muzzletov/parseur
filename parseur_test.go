@@ -5,6 +5,28 @@ import (
 	"testing"
 )
 
+func TestIntersection(t *testing.T) {
+	a := Tag{Name: "a"}
+	b := Tag{Name: "b"}
+	c := Tag{Name: "c"}
+	firstList := []*Tag{&a}
+	secondList := []*Tag{&b, &c}
+	if len(*GetIntersection(&firstList, &secondList)) != 0 {
+		log.Fatal("wrong array size")
+	}
+
+	secondList = append(secondList, &a)
+	result := *GetIntersection(&firstList, &secondList)
+
+	if len(result) != 1 {
+		log.Fatal("wrong array size")
+	}
+
+	if result[0].Name != "a" {
+		log.Fatal("wrong resulting element")
+	}
+}
+
 func TestClasses(t *testing.T) {
 	current := Tag{Attributes: map[string]string{"class": "a rofl lol rofl"}}
 	parser := Parser{length: 12, tagMap: map[string][]*Tag{}, current: &current}
