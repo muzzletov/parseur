@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -48,9 +49,9 @@ func NewClient() *WebClient {
 }
 
 type WebClient struct {
+	chunkSize int
 	client    *http.Client
 	jar       *ExtJar
-	chunkSize int
 	userAgent string
 }
 
@@ -59,40 +60,53 @@ type Offset struct {
 	End   int
 }
 
-type Log struct {
-	Offset Offset
-	Name   string
-}
-
 type Tag struct {
 	Name       string
+	Namespace  string
+	Children   []*Tag
 	Attributes map[string]string
 	Body       Offset
-	Children   []*Tag
-	Namespace  string
 }
 
 type Parser struct {
-	Mu            sync.Mutex
-	offsetMap     map[int]*Tag
-	body          *[]byte
-	Complete      *bool
-	Done          bool
-	root          *Tag
-	current       *Tag
-	namespaceTag  *Tag
-	namespaces    map[string]string
 	length        int
 	lastIndex     int
 	html          bool
 	async         bool
 	success       bool
-	Logs          []Log
-	InBound       func(int) bool
-	OffsetList    func() []*Tag
+	Done          bool
+	root          *Tag
+	current       *Tag
+	namespaceTag  *Tag
+	body          *[]byte
+	Complete      *bool
+	hook          *func(parser *Parser)
 	DataChan      chan *[]byte
 	ParseComplete chan struct{}
-	hook          *func(parser *Parser)
+	offsetMap     map[int]*Tag
+	namespaces    map[string]string
+	tagMap        map[string][]*Tag
+	InBound       func(int) bool
+	OffsetList    func() []*Tag
+	Mu            sync.Mutex
+}
+
+func (p *Parser) intersect(a *[]*Tag, b *[]*Tag) *[]*Tag {
+	length := int(math.Min(float64(len(*a)), float64(len(*b))))
+	tagMap := make(map[*Tag]struct{}, length)
+	result := make([]*Tag, 0, length)
+
+	for _, t := range *a {
+		tagMap[t] = struct{}{}
+	}
+
+	for _, t := range *b {
+		if _, ok := tagMap[t]; ok {
+			result = append(result, t)
+		}
+	}
+
+	return &result
 }
 
 func (c *WebClient) SetChunkSize(size int) {
@@ -264,12 +278,12 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 		length:     len(*body),
 		async:      async,
 		hook:       hook,
+		tagMap:     make(map[string][]*Tag),
 	}
 
 	parser.OffsetList = parser.computeOffsetList
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
 	parser.lastIndex = 0
-	parser.Logs = make([]Log, 0)
 	parser.root = parser.current
 
 	if parser.async {
@@ -520,6 +534,8 @@ func (p *Parser) consumeTag(index int) int {
 		currentIndex += 2
 	} else if (*p.body)[currentIndex] == '>' {
 		p.offsetMap[offset] = self
+		p.addTag(self.Name, self)
+
 		index = currentIndex
 
 		if self.Name != "script" {
@@ -541,6 +557,15 @@ func (p *Parser) consumeTag(index int) int {
 	p.current = parent
 
 	return p.updatePointer(currentIndex)
+}
+
+func (p *Parser) addTag(id string, item *Tag) {
+	if _, ok := p.tagMap[id]; ok {
+		p.tagMap[id] = append(p.tagMap[id], item)
+	} else {
+		p.tagMap[id] = make([]*Tag, 1)
+		p.tagMap[id][0] = item
+	}
 }
 
 func (p *Parser) handleSelfclosing(index int) int {
@@ -806,11 +831,28 @@ func (p *Parser) parseAttributes(index int) int {
 		if (*p.body)[currentIndex] == '?' ||
 			(*p.body)[currentIndex] == '>' ||
 			(*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>' {
+
+			if attr, ok := p.current.Attributes["class"]; ok {
+				p.addClasses(attr)
+			}
 			return p.updatePointer(index)
 		}
 	}
 
 	return p.updatePointer(currentIndex)
+}
+
+func (p *Parser) addClasses(attr string) {
+	length := len(attr)
+	for i, k := 0, 0; i < length; i++ {
+		for k = i; i < length && attr[i] == ' '; i, k = i+1, k+1 {
+		}
+		for ; i < length && attr[i] != ' '; i++ {
+		}
+
+		id := "." + attr[k:i]
+		p.addTag(id, p.current)
+	}
 }
 
 func (p *Parser) ffLetter(index int) bool {
