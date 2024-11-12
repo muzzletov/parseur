@@ -3,7 +3,6 @@ package parseur
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"io"
 	"log"
 	"math"
@@ -189,10 +188,10 @@ func (c *WebClient) SetUserAgent(agent string) {
 	c.userAgent = agent
 }
 
-func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
+func (c *WebClient) FetchSync(url string) (data []byte, err error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
@@ -204,7 +203,30 @@ func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
 	resp, err := c.client.Do(req)
 
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	return io.ReadAll(resp.Body)
+}
+
+func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := c.client.Do(req)
+
+	if err != nil {
+		return nil, err
 	}
 
 	defer resp.Body.Close()
@@ -226,7 +248,7 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
@@ -238,28 +260,29 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 	resp, err := c.client.Do(req)
 
 	if err != nil {
-		log.Fatalln(err)
+		return nil, err
 	}
 
 	defer resp.Body.Close()
 
 	buf := make([]byte, c.chunkSize)
 	data := make([]byte, 0)
-
 	reader := bufio.NewReader(resp.Body)
 
 	p = NewParser(&data, true, hook)
-	for !p.Done {
-		r, err := reader.Read(buf)
 
-		data = append(data, buf[:r]...)
+	var n = 0
+
+	for !p.Done {
+		n, err = reader.Read(buf)
+
+		data = append(data, buf[:n]...)
 
 		if err == io.EOF {
 			break
 		}
 
 		if err != nil {
-			fmt.Println(err)
 			return nil, err
 		}
 
