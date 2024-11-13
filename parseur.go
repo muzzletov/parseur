@@ -477,10 +477,7 @@ func (b *Buffer) Read() []byte {
 func (p *Parser) consumeNamespaceTag(index int) int {
 	currentIndex := p.skipWhitespace(index)
 
-	if !p.InBound(currentIndex) || currentIndex == -1 {
-		return -1
-	}
-	if (*p.body)[currentIndex] != '<' {
+	if currentIndex == -1 || !p.InBound(currentIndex) || (*p.body)[currentIndex] != '<' {
 		return -1
 	}
 
@@ -520,8 +517,10 @@ func (p *Parser) updatePointer(currentIndex int) int {
 }
 
 func (p *Parser) isWhitespace(index int) bool {
-	r := (*p.body)[index]
-	return r == ' ' || r == '\t' || r == '\n'
+	return (*p.body)[index] == ' ' ||
+		(*p.body)[index] == '\t' ||
+		(*p.body)[index] == '\n' ||
+		(*p.body)[index] == '\r'
 }
 
 func (p *Parser) skipWhitespace(index int) int {
@@ -556,11 +555,11 @@ func (p *Parser) parseTagEnd(index int, name string) int {
 		}
 	}
 
-	if !p.InBound(length) || (*p.body)[length] != '>' {
-		return -1
+	if p.InBound(length) && (*p.body)[length] == '>' {
+		p.updatePointer(length + 1)
 	}
 
-	return p.updatePointer(length + 1)
+	return -1
 }
 
 func (p *Parser) isMETAorLINKtag(t *Tag) bool {
@@ -573,20 +572,9 @@ func (p *Parser) isMETAorLINKtag(t *Tag) bool {
 		t.Name == "hr"
 }
 
-func (p *Parser) consumeTag(index int) int {
-	currentIndex := p.skipWhitespace(index)
-	offset := currentIndex
-	parent := p.current
-
-	isOutOfBoundsOrNotStartOfTag := currentIndex == -1 ||
-		!p.InBound(currentIndex) ||
-		(*p.body)[currentIndex] != '<'
-
-	if isOutOfBoundsOrNotStartOfTag {
-		return -1
-	}
-
-	tag, ok := p.offsetMap[offset]
+func (p *Parser) retrieveFromCache(index int) int {
+	tag, ok := p.offsetMap[index]
+	currentIndex := index
 
 	if ok {
 		if tag.Body.End == -1 {
@@ -605,12 +593,33 @@ func (p *Parser) consumeTag(index int) int {
 			index = currentIndex
 		}
 
-		p.current = parent
-
 		return index
 	}
 
-	currentIndex = p.parseTagName(currentIndex + 1)
+	return -1
+}
+
+func (p *Parser) consumeTag(index int) int {
+	currentIndex := p.skipWhitespace(index)
+	offset := currentIndex
+	parent := p.current
+
+	isOutOfBoundsOrNotStartOfTag := currentIndex == -1 ||
+		!p.InBound(currentIndex) ||
+		(*p.body)[currentIndex] != '<'
+
+	if isOutOfBoundsOrNotStartOfTag {
+		return -1
+	}
+
+	currentIndex = p.retrieveFromCache(offset)
+
+	if p.retrieveFromCache(offset) != -1 {
+		p.current = parent
+		return currentIndex
+	}
+
+	currentIndex = p.parseTagName(index + 1)
 	self := p.current
 
 	if currentIndex == -1 {
@@ -632,10 +641,10 @@ func (p *Parser) consumeTag(index int) int {
 
 		index = currentIndex
 
-		if self.Name != "script" {
-			currentIndex = p.parseRegularBody(currentIndex)
-		} else {
+		if self.Name == "script" {
 			currentIndex = p.ffScriptBody(currentIndex)
+		} else {
+			currentIndex = p.parseRegularBody(currentIndex)
 		}
 
 		if currentIndex == -1 {
@@ -744,7 +753,7 @@ func (p *Parser) parseTagName(index int) int {
 	}
 
 	if (*p.body)[index] == '"' || (*p.body)[index] == '\'' {
-		index = p.checkForLiteral(index, (*p.body)[index])
+		index = p.ffLiteral(index+1, (*p.body)[index])
 	} else {
 		index = p.skipValidTag(index)
 	}
@@ -786,7 +795,6 @@ func (p *Parser) parseBody(index int) int {
 		}
 
 		currentIndex = index
-
 		index = p.consumeComment(index)
 
 		if index != -1 {
@@ -853,7 +861,7 @@ func (p *Parser) parseAttributes(index int) int {
 		var namespace *string = nil
 
 		if (*p.body)[currentIndex] == '"' || (*p.body)[currentIndex] == '\'' {
-			currentIndex = p.checkForLiteral(currentIndex, (*p.body)[currentIndex])
+			currentIndex = p.ffLiteral(currentIndex+1, (*p.body)[currentIndex])
 		} else {
 			currentIndex = p.skipValidTag(currentIndex)
 		}
@@ -893,29 +901,25 @@ func (p *Parser) parseAttributes(index int) int {
 		}
 
 		literal := (*p.body)[currentIndex+1]
+		index = currentIndex + 2
 
 		if literal != '"' && literal != '\'' {
 			return -1
 		}
 
-		currentIndex = currentIndex + 2
-		index = currentIndex
+		currentIndex = p.ffLiteral(currentIndex+2, literal)
 
-		for p.InBound(currentIndex) && (*p.body)[currentIndex] != literal {
-			currentIndex++
-		}
-
-		if !p.InBound(currentIndex) {
+		if currentIndex == -1 {
 			return -1
 		}
 
 		if namespace != nil {
-			p.namespaces[*namespace] = string((*p.body)[index:currentIndex])
+			p.namespaces[*namespace] = string((*p.body)[index : currentIndex-1])
 		} else {
-			p.current.Attributes[name] = string((*p.body)[index:currentIndex])
+			p.current.Attributes[name] = string((*p.body)[index : currentIndex-1])
 		}
 
-		currentIndex = p.skipWhitespace(currentIndex + 1)
+		currentIndex = p.skipWhitespace(currentIndex)
 		index = currentIndex
 
 		if currentIndex == -1 {
@@ -958,21 +962,25 @@ func (p *Parser) ffLetter(index int) bool {
 }
 
 func (p *Parser) isAlpha(index int) bool {
-	r := (*p.body)[index]
-	return ('A' <= r && r <= 'Z') || ('a' <= r && r <= 'z')
+	return ('A' <= (*p.body)[index] && (*p.body)[index] <= 'Z') ||
+		('a' <= (*p.body)[index] && (*p.body)[index] <= 'z')
 }
 
-func (p *Parser) checkForLiteral(index int, literal uint8) int {
-	r := (*p.body)[index]
-
-	if r != literal {
+func (p *Parser) ffLiteral(index int, literal uint8) int {
+	if !p.InBound(index) {
 		return -1
 	}
 
-	index += 1
+	for p.InBound(index) && (*p.body)[index] != literal {
+		if (*p.body)[index] == '\\' {
+			index += 2
+		} else {
+			index++
+		}
+	}
 
-	for p.InBound(index) && (*p.body)[index] != 34 {
-		index++
+	if !p.InBound(index + 1) {
+		return -1
 	}
 
 	index += 1
@@ -995,14 +1003,15 @@ func (p *Parser) skipValidTag(index int) int {
 }
 
 func (p *Parser) isValidTagStart(index int) bool {
-	r := (*p.body)[index]
-
-	return ('A' <= r && r <= 'Z') || ('a' <= r && r <= 'z')
+	return ('A' <= (*p.body)[index] && (*p.body)[index] <= 'Z') ||
+		('a' <= (*p.body)[index] && (*p.body)[index] <= 'z')
 }
 
 func (p *Parser) isValidTagChar(index int) bool {
-	r := (*p.body)[index]
-	return ('0' <= r && r <= '9') || ('A' <= r && r <= 'Z') || ('a' <= r && r <= 'z') || (r == '-')
+	return ('0' <= (*p.body)[index] && (*p.body)[index] <= '9') ||
+		('A' <= (*p.body)[index] && (*p.body)[index] <= 'Z') ||
+		('a' <= (*p.body)[index] && (*p.body)[index] <= 'z') ||
+		((*p.body)[index] == '-')
 }
 
 func (p *Parser) computeOffsetList() []*Tag {

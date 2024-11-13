@@ -104,3 +104,22 @@ func check(tags *[]*Tag, tag *Tag, ok bool) {
 
 	log.Fatal("element not part of map")
 }
+
+func TestEscapedAttributes(t *testing.T) {
+	attr := `{\"arr\":\"b\"}`
+	data := []byte(`<div attr="` + attr + `"></div>`)
+	c := NewParser(&data, false, nil)
+
+	if (*c.GetTags("div"))[0].Attributes["attr"] != attr {
+		log.Fatal("escaped attribute not parsed correctly")
+	}
+}
+
+func TestAttribute(t *testing.T) {
+	data := []byte(`<div attr="a"></div>`)
+	c := NewParser(&data, false, nil)
+
+	if (*c.GetTags("div"))[0].Attributes["attr"] != `a` {
+		log.Fatal("attribute not parsed correctly")
+	}
+}
