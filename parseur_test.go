@@ -74,6 +74,15 @@ func TestBody(t *testing.T) {
 	if payload[(*tag).Body.Start:(*tag).Body.End] != "" {
 		log.Fatal("payload offset wrong")
 	}
+
+	payload = "<div />"
+	body = []byte(payload)
+
+	p := NewParser(&body, false, nil)
+	tag = p.First("div")
+	if payload[(*tag).Body.Start:(*tag).Body.End] != "" || (*tag).Body.End != 0 {
+		log.Fatal("payload offset wrong")
+	}
 }
 
 func TestClasses(t *testing.T) {
@@ -112,6 +121,15 @@ func TestEscapedAttributes(t *testing.T) {
 
 	if (*c.GetTags("div"))[0].Attributes["attr"] != attr {
 		log.Fatal("escaped attribute not parsed correctly")
+	}
+}
+
+func TestWildcard(t *testing.T) {
+	data := []byte(`<div attr="a"><li></li><a></a></div><p></p>`)
+	c := NewParser(&data, false, nil)
+
+	if len(*c.GetTags("*")) != 4 {
+		log.Fatal("wrong size for wildcard array")
 	}
 }
 

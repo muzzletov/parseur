@@ -634,35 +634,30 @@ func (p *Parser) consumeTag(index int) int {
 
 	if p.isMETAorLINKtag(self) {
 		currentIndex = p.handleSelfclosing(currentIndex)
-		p.offsetMap[offset] = self
-		p.current.Body = Offset{offset, currentIndex}
 	} else if isEndOfTag {
-		p.offsetMap[offset] = self
 		currentIndex += 2
 	} else if (*p.body)[currentIndex] == '>' {
-		p.offsetMap[offset] = self
-		p.addTag(self.Name, self)
-
 		index = currentIndex
-
 		if self.Name == "script" {
 			currentIndex = p.ffScriptBody(currentIndex)
 		} else {
 			currentIndex = p.parseRegularBody(currentIndex)
 		}
 
-		if currentIndex == -1 {
-			p.current.Body = Offset{offset, -1}
-			parent.Children = append(parent.Children, p.current.Children...)
-			p.current = parent
-			return index + 1
-		}
 	} else {
 		return -1
 	}
 
-	parent.Children = append(parent.Children, self)
+	if currentIndex == -1 {
+		self.Body.End = -1
+	}
+
+	p.offsetMap[offset] = self
+	p.addTag(self.Name, self)
+	p.addTag("*", self)
 	p.current = parent
+
+	parent.Children = append(parent.Children, self)
 
 	return p.updatePointer(currentIndex)
 }
@@ -861,6 +856,12 @@ func (p *Parser) consumeComment(index int) int {
 
 func (p *Parser) parseAttributes(index int) int {
 	currentIndex := index
+
+	if p.InBound(currentIndex+1) &&
+		(*p.body)[currentIndex] == '/' &&
+		(*p.body)[currentIndex+1] == '>' {
+		return currentIndex
+	}
 
 	for currentIndex != -1 {
 		var namespace *string = nil
