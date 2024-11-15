@@ -439,7 +439,7 @@ func (p *Parser) parseDoctype(index int) int {
 	if (*p.body)[index] != '!' {
 		return -1
 	}
-
+	parent := p.current
 	index = p.parseTagName(index + 1)
 
 	if index == -1 {
@@ -453,7 +453,7 @@ func (p *Parser) parseDoctype(index int) int {
 	}
 
 	p.html = strings.ToLower(p.current.Name) == "doctype" && p.current.Attributes["html"] == "html"
-
+	p.current = parent
 	return p.updatePointer(index + 1)
 }
 
@@ -555,8 +555,10 @@ func (p *Parser) parseTagEnd(index int, name string) int {
 		}
 	}
 
-	if p.InBound(length) && (*p.body)[length] == '>' {
-		p.updatePointer(length + 1)
+	isTagEnd := p.InBound(length) && (*p.body)[length] == '>'
+
+	if isTagEnd {
+		return p.updatePointer(length + 1)
 	}
 
 	return -1
@@ -572,13 +574,13 @@ func (p *Parser) isMETAorLINKtag(t *Tag) bool {
 		t.Name == "hr"
 }
 
-func (p *Parser) retrieveFromCache(index int) int {
+func (p *Parser) retrieveFromCache(index int) (int, bool) {
 	tag, ok := p.offsetMap[index]
 	currentIndex := index
 
 	if ok {
 		if tag.Body.End == -1 {
-			return -1
+			return -1, ok
 		}
 
 		if p.isMETAorLINKtag(tag) {
@@ -593,10 +595,10 @@ func (p *Parser) retrieveFromCache(index int) int {
 			index = currentIndex
 		}
 
-		return index
+		return index, ok
 	}
 
-	return -1
+	return -1, ok
 }
 
 func (p *Parser) consumeTag(index int) int {
@@ -612,17 +614,19 @@ func (p *Parser) consumeTag(index int) int {
 		return -1
 	}
 
-	currentIndex = p.retrieveFromCache(offset)
+	currentIndex, ok := p.retrieveFromCache(offset)
 
-	if p.retrieveFromCache(offset) != -1 {
-		p.current = parent
+	if currentIndex != -1 {
 		return currentIndex
+	} else if ok {
+		return -1
 	}
 
 	currentIndex = p.parseTagName(index + 1)
 	self := p.current
 
 	if currentIndex == -1 {
+		p.current = parent
 		return -1
 	}
 
@@ -650,6 +654,7 @@ func (p *Parser) consumeTag(index int) int {
 		if currentIndex == -1 {
 			p.current.Body = Offset{offset, -1}
 			parent.Children = append(parent.Children, p.current.Children...)
+			p.current = parent
 			return index + 1
 		}
 	} else {
