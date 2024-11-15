@@ -133,6 +133,7 @@ type Tag struct {
 	Children   []*Tag
 	Attributes map[string]string
 	Body       Offset
+	Tag        Offset
 }
 
 type Parser struct {
@@ -339,6 +340,66 @@ func (t *Tag) FindAll(name string) *[]*Tag {
 
 func (p *Parser) Sync(index int) bool {
 	return p.length > index
+}
+func (p *Parser) GetText() string {
+	builder := strings.Builder{}
+	var reduce func(*Tag) = nil
+
+	reduce = func(tag *Tag) {
+		offset := tag.Body.Start
+
+		for _, child := range tag.Children {
+			length := child.Tag.Start - offset
+
+			if length > 0 {
+				builder.Write(p.GetBody()[offset : offset+length])
+			}
+
+			reduce(child)
+
+			offset = child.Tag.End
+		}
+
+		if offset < tag.Body.End {
+			builder.Write(p.GetBody()[offset:tag.Body.End])
+			return
+		}
+	}
+
+	reduce(p.GetRoot())
+
+	return builder.String()
+}
+
+func (p *Parser) GetJoinedText(seperator byte) string {
+	builder := strings.Builder{}
+	var reduce func(*Tag) = nil
+
+	reduce = func(tag *Tag) {
+		offset := tag.Body.Start
+
+		for _, child := range tag.Children {
+			length := child.Tag.Start - offset
+
+			if length > 0 {
+				builder.Write(p.GetBody()[offset : offset+length])
+				builder.WriteByte(seperator)
+			}
+
+			reduce(child)
+
+			offset = child.Tag.End
+		}
+
+		if offset < tag.Body.End {
+			builder.Write(p.GetBody()[offset:tag.Body.End])
+			builder.WriteByte(seperator)
+		}
+	}
+
+	reduce(p.GetRoot())
+
+	return builder.String()
 }
 
 func (p *Parser) Async(index int) bool {
@@ -651,6 +712,8 @@ func (p *Parser) consumeTag(index int) int {
 	if currentIndex == -1 {
 		self.Body.End = -1
 	}
+
+	self.Tag = Offset{Start: offset, End: currentIndex}
 
 	p.offsetMap[offset] = self
 	p.addTag(self.Name, self)

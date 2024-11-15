@@ -56,6 +56,35 @@ func TestIntersection(t *testing.T) {
 	}
 }
 
+func TestBounds(t *testing.T) {
+	payload := "<div>fsdjkdksfdjskjkdfs</div>"
+	body := []byte(payload)
+
+	tag := NewParser(&body, false, nil).First("div")
+
+	if payload[(*tag).Tag.Start:(*tag).Tag.End] != payload[0:29] {
+		log.Fatal("tag offset wrong")
+	}
+
+	payload = "<div></div>"
+	body = []byte(payload)
+
+	tag = NewParser(&body, false, nil).First("div")
+
+	if payload[(*tag).Tag.Start:(*tag).Tag.End] != payload[0:11] {
+		log.Fatal("tag offset wrong")
+	}
+
+	payload = "<div />"
+	body = []byte(payload)
+
+	tag = NewParser(&body, false, nil).First("div")
+
+	if payload[(*tag).Tag.Start:(*tag).Tag.End] != "<div />" {
+		log.Fatal("tag offset wrong")
+	}
+}
+
 func TestBody(t *testing.T) {
 	payload := "<div>fsdjkdksfdjskjkdfs</div>"
 	body := []byte(payload)
@@ -112,6 +141,27 @@ func check(tags *[]*Tag, tag *Tag, ok bool) {
 	}
 
 	log.Fatal("element not part of map")
+}
+
+func TestExtract(t *testing.T) {
+	html := []byte(`<a>fdjasjhfsadjh<div>a<HAHAHA>z</HAHAHA></div><p></p></a>`)
+	c := NewParser(&html, false, nil)
+	extract := c.GetText()
+	if extract != "fdjasjhfsadjhaz" {
+		log.Fatal("extracted text doesnt match")
+	}
+
+	extract = c.GetJoinedText(' ')
+	if extract != "fdjasjhfsadjh a z " {
+		log.Fatal("extracted text doesnt match")
+	}
+
+	html = []byte(`<a></a>`)
+	c = NewParser(&html, false, nil)
+	extract = c.GetJoinedText(' ')
+	if extract != "" {
+		log.Fatal("extracted text doesnt match")
+	}
 }
 
 func TestEscapedAttributes(t *testing.T) {
