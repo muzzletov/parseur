@@ -1,0 +1,30 @@
+# This is a basic workflow that is manually triggered
+
+name: Run tests
+
+# Controls when the action will run. Workflow runs when manually triggered using the UI
+# or API.
+on:
+  push:
+    branches:
+      - main
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "greet"
+  test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup
+      uses: actions/setup-go@v5
+      with:
+        go-version: 1.23 # Specify your Go version here
+    - name: Install dependencies
+      run: go mod tidy
+    - name: Run tests
+      run: go test ./...
