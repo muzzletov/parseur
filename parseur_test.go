@@ -147,18 +147,34 @@ func TestExtract(t *testing.T) {
 	html := []byte(`<a>fdjasjhfsadjh<div>a<HAHAHA>z</HAHAHA></div><p></p></a>`)
 	c := NewParser(&html, false, nil)
 	extract := c.GetText()
+
 	if extract != "fdjasjhfsadjhaz" {
 		log.Fatal("extracted text doesnt match")
 	}
 
 	extract = c.GetJoinedText(' ')
+
 	if extract != "fdjasjhfsadjh a z " {
 		log.Fatal("extracted text doesnt match")
+	}
+
+	m := c.GetTagMap()
+	l := []string{"fdjasjhfsadjh", "a", "z"}
+
+	for _, i := range l {
+		if _, ok := m[i]; !ok {
+			log.Fatalf("tag %s not in set", i)
+		}
+	}
+
+	if len(m) != 3 {
+		log.Fatalf("wrong tag count")
 	}
 
 	html = []byte(`<a></a>`)
 	c = NewParser(&html, false, nil)
 	extract = c.GetJoinedText(' ')
+
 	if extract != "" {
 		log.Fatal("extracted text doesnt match")
 	}

@@ -196,11 +196,6 @@ func (c *WebClient) FetchSync(url string) (data []byte, err error) {
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
-
-	if err != nil {
-		return nil, err
-	}
-
 	resp, err := c.client.Do(req)
 
 	if err != nil {
@@ -219,11 +214,6 @@ func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
-
-	if err != nil {
-		return nil, err
-	}
-
 	resp, err := c.client.Do(req)
 
 	if err != nil {
@@ -369,6 +359,26 @@ func (p *Parser) GetText() string {
 	reduce(p.GetRoot())
 
 	return builder.String()
+}
+
+func (p *Parser) GetTagMap() map[string]struct{} {
+	m := make(map[string]struct{})
+	text := p.GetJoinedText(' ')
+	length := len(text)
+
+	for i, k := 0, 0; i < length; i, k = i+1, i+1 {
+
+		for ; i < length && text[i] != ' '; i++ {
+		}
+
+		if k == i {
+			continue
+		}
+
+		m[text[k:i]] = struct{}{}
+	}
+
+	return m
 }
 
 func (p *Parser) GetJoinedText(seperator byte) string {
