@@ -180,6 +180,15 @@ func TestExtract(t *testing.T) {
 	}
 }
 
+func TestNewEscapedParser(t *testing.T) {
+	l := []byte("<div attr=\"agfdgfdgfdgfd\">lol</div>")
+	c := NewEscapedParser(&l)
+
+	if (*c.GetTags("div"))[0].Attributes["attr"] != "agfdgfdgfdgfd" {
+		log.Fatal("err")
+	}
+}
+
 func TestEscapedAttributes(t *testing.T) {
 	attr := `{\"arr\":\"b\"}`
 	data := []byte(`<div attr="` + attr + `"></div>`)

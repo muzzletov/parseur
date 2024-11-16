@@ -155,6 +155,7 @@ type Parser struct {
 	namespaces    map[string]string
 	tagMap        map[string]*[]*Tag
 	InBound       func(int) bool
+	parseQuote    func(index int, literal uint8) int
 	OffsetList    func() []*Tag
 	Mu            sync.Mutex
 }
@@ -432,9 +433,9 @@ func (p *Parser) Async(index int) bool {
 	return p.InBound(index)
 }
 
-func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
+func createParser(body *[]byte) *Parser {
 	complete := false
-	parser := &Parser{
+	return &Parser{
 		offsetMap:  make(map[int]*Tag),
 		body:       body,
 		Complete:   &complete,
@@ -442,15 +443,35 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 		Done:       false,
 		namespaces: make(map[string]string),
 		length:     len(*body),
-		async:      async,
-		hook:       hook,
 		tagMap:     make(map[string]*[]*Tag),
 	}
+}
 
+func NewEscapedParser(body *[]byte) *Parser {
+	parser := createParser(body)
 	parser.OffsetList = parser.computeOffsetList
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
 	parser.lastIndex = 0
 	parser.root = parser.current
+	parser.parseQuote = parser.parseEscapedQuote
+	parser.length = len(*body)
+	parser.InBound = parser.Sync
+
+	parser.parse()
+
+	return parser
+}
+
+func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
+	parser := createParser(body)
+	parser.async = async
+	parser.hook = hook
+	parser.OffsetList = parser.computeOffsetList
+	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
+	parser.lastIndex = 0
+	parser.root = parser.current
+
+	parser.parseQuote = parser.parseUnescapedQuote
 
 	if parser.async {
 		parser.DataChan = make(chan *[]byte)
@@ -1045,11 +1066,7 @@ func (p *Parser) isAlpha(index int) bool {
 		('a' <= (*p.body)[index] && (*p.body)[index] <= 'z')
 }
 
-func (p *Parser) ffLiteral(index int, literal uint8) int {
-	if !p.InBound(index) {
-		return -1
-	}
-
+func (p *Parser) parseUnescapedQuote(index int, literal uint8) int {
 	for p.InBound(index) && (*p.body)[index] != literal {
 		if (*p.body)[index] == '\\' {
 			index += 2
@@ -1057,6 +1074,31 @@ func (p *Parser) ffLiteral(index int, literal uint8) int {
 			index++
 		}
 	}
+
+	return index
+}
+
+func (p *Parser) parseEscapedQuote(index int, literal uint8) int {
+	for p.InBound(index) && (*p.body)[index] != literal {
+		if (*p.body)[index] == '\\' {
+			if p.InBound(index+1) && (*p.body)[index+1] == literal {
+				return index + 3
+			}
+			index += 2
+		} else {
+			index++
+		}
+	}
+
+	return index
+}
+
+func (p *Parser) ffLiteral(index int, literal uint8) int {
+	if !p.InBound(index) {
+		return -1
+	}
+
+	index = p.parseQuote(index, literal)
 
 	if !p.InBound(index + 1) {
 		return -1
