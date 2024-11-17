@@ -741,13 +741,6 @@ func (p *Parser) consumeTag(index int) int {
 		return -1
 	}
 
-	self.Tag = Offset{Start: offset, End: currentIndex}
-
-	p.offsetMap[offset] = self
-	p.addTag(self.Name, self)
-	p.addTag("*", self)
-	p.current = parent
-
 	parent.Children = append(parent.Children, self)
 
 	if currentIndex == -1 {
@@ -760,6 +753,13 @@ func (p *Parser) consumeTag(index int) int {
 
 		self.Children = nil
 	}
+
+	self.Tag = Offset{Start: offset, End: currentIndex}
+
+	p.offsetMap[offset] = self
+	p.addTag(self.Name, self)
+	p.addTag("*", self)
+	p.current = parent
 
 	return currentIndex
 }
