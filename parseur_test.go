@@ -5,6 +5,18 @@ import (
 	"testing"
 )
 
+func TestIdQuery(t *testing.T) {
+	payload := []byte(`<div class="rofl" id="a">Hi!</div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
+
+	p := NewParser(&payload, false, nil)
+	query := p.Query("#a")
+	result := query.GetTags()
+
+	if len(*result) != 1 || query.First().Name != "span" {
+		log.Fatal("query result length incorrect")
+	}
+}
+
 func TestQuery(t *testing.T) {
 	payload := []byte(`<div class="rofl">Hi!</div>How are you?<div class="lol">Bye.</div><span class="rofl"></span>`)
 

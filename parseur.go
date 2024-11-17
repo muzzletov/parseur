@@ -1016,12 +1016,16 @@ func (p *Parser) parseAttributes(index int) int {
 			break
 		}
 
-		if (*p.body)[currentIndex] == '?' ||
-			(*p.body)[currentIndex] == '>' ||
-			(*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>' {
+		if (*p.body)[currentIndex] == '>' ||
+			((*p.body)[currentIndex] == '?' && (*p.body)[currentIndex+1] == '>') ||
+			((*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>') {
 
 			if attr, ok := p.current.Attributes["class"]; ok {
 				p.addClasses(attr)
+			}
+
+			if attr, ok := p.current.Attributes["id"]; ok {
+				p.setOrAddId(attr, p.current)
 			}
 
 			break
@@ -1163,4 +1167,14 @@ func (p *Parser) computeOffsetList() []*Tag {
 		}
 	}
 	return t
+}
+
+func (p *Parser) setOrAddId(attr string, current *Tag) {
+	queryHandle := "#" + attr
+
+	if _, ok := p.tagMap[queryHandle]; ok {
+		(*p.tagMap[queryHandle])[0] = current
+	} else {
+		p.addTag(queryHandle, current)
+	}
 }
