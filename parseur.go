@@ -144,6 +144,7 @@ type Parser struct {
 	success       bool
 	Done          bool
 	root          *Tag
+	ffLiteral     func(int) (int, *string)
 	current       *Tag
 	namespaceTag  *Tag
 	body          *[]byte
@@ -155,7 +156,6 @@ type Parser struct {
 	namespaces    map[string]string
 	tagMap        map[string]*[]*Tag
 	InBound       func(int) bool
-	parseQuote    func(index int, literal uint8) int
 	OffsetList    func() []*Tag
 	Mu            sync.Mutex
 }
@@ -453,7 +453,7 @@ func NewEscapedParser(body *[]byte) *Parser {
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
 	parser.lastIndex = 0
 	parser.root = parser.current
-	parser.parseQuote = parser.parseEscapedQuote
+	parser.ffLiteral = parser.ffEscapedTagLiteral
 	parser.length = len(*body)
 	parser.InBound = parser.Sync
 
@@ -471,7 +471,7 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 	parser.lastIndex = 0
 	parser.root = parser.current
 
-	parser.parseQuote = parser.parseUnescapedQuote
+	parser.ffLiteral = parser.ffTagLiteral
 
 	if parser.async {
 		parser.DataChan = make(chan *[]byte)
@@ -546,7 +546,7 @@ func (p *Parser) parseDoctype(index int) int {
 
 	p.html = strings.ToLower(p.current.Name) == "doctype" && p.current.Attributes["html"] == "html"
 	p.current = parent
-	return p.updatePointer(index + 1)
+	return index + 1
 }
 
 type Buffer struct {
@@ -597,15 +597,7 @@ func (p *Parser) consumeNamespaceTag(index int) int {
 		p.namespaceTag = p.current
 	}
 
-	return p.updatePointer(currentIndex + 2)
-}
-
-func (p *Parser) updatePointer(currentIndex int) int {
-	if p.lastIndex < currentIndex {
-		p.lastIndex = currentIndex
-	}
-
-	return currentIndex
+	return currentIndex + 2
 }
 
 func (p *Parser) isWhitespace(index int) bool {
@@ -624,7 +616,7 @@ func (p *Parser) skipWhitespace(index int) int {
 		index++
 	}
 
-	return p.updatePointer(index)
+	return index
 }
 
 func (p *Parser) parseTagEnd(index int, name string) int {
@@ -650,7 +642,7 @@ func (p *Parser) parseTagEnd(index int, name string) int {
 	isTagEnd := p.InBound(length) && (*p.body)[length] == '>'
 
 	if isTagEnd {
-		return p.updatePointer(length + 1)
+		return length + 1
 	}
 
 	return -1
@@ -753,7 +745,7 @@ func (p *Parser) consumeTag(index int) int {
 
 	parent.Children = append(parent.Children, self)
 
-	return p.updatePointer(currentIndex)
+	return currentIndex
 }
 
 func (p *Parser) addTag(id string, item *Tag) {
@@ -845,22 +837,23 @@ func (p *Parser) parseTagName(index int) int {
 	if !p.ffLetter(index) {
 		return -1
 	}
+	var value *string
 
-	if (*p.body)[index] == '"' || (*p.body)[index] == '\'' {
-		index = p.ffLiteral(index+1, (*p.body)[index])
-	} else {
-		index = p.skipValidTag(index)
+	index, value = p.ffLiteral(index)
+
+	if index == -1 {
+		index, value = p.skipValidTag(currentIndex)
 	}
 
 	current := &Tag{}
 
 	if (*p.body)[index] == ':' {
-		current.Namespace = string((*p.body)[currentIndex:index])
+		current.Namespace = *value
 		currentIndex = index + 1
-		index = p.skipValidTag(index + 1)
+		index, value = p.skipValidTag(index + 1)
 	}
 
-	current.Name = string((*p.body)[currentIndex:index])
+	current.Name = *value
 	p.current = current
 	current.Attributes = make(map[string]string)
 	currentIndex = p.skipWhitespace(index)
@@ -869,7 +862,7 @@ func (p *Parser) parseTagName(index int) int {
 		currentIndex = p.parseAttributes(currentIndex)
 	}
 
-	return p.updatePointer(currentIndex)
+	return currentIndex
 }
 
 func (p *Parser) parseBody(index int) int {
@@ -959,39 +952,41 @@ func (p *Parser) parseAttributes(index int) int {
 
 	for currentIndex != -1 {
 		var namespace *string = nil
+		var value *string = nil
 
-		if (*p.body)[currentIndex] == '"' || (*p.body)[currentIndex] == '\'' {
-			currentIndex = p.ffLiteral(currentIndex+1, (*p.body)[currentIndex])
-		} else {
-			currentIndex = p.skipValidTag(currentIndex)
+		c, value := p.ffLiteral(currentIndex)
+
+		if c == -1 {
+			c, value = p.skipValidTag(currentIndex)
 		}
+
+		currentIndex = c
 
 		if currentIndex == -1 || !p.InBound(currentIndex) {
 			return -1
 		}
 
-		name := string((*p.body)[index:currentIndex])
+		name := *value
 
 		if (*p.body)[currentIndex] == '>' {
-			p.current.Attributes[name] = string((*p.body)[index:currentIndex])
-			return p.updatePointer(currentIndex)
+			p.current.Attributes[name] = *value
+			return currentIndex
 		}
 
 		if name == "xmlns" &&
 			(*p.body)[currentIndex] == ':' {
 			index = currentIndex + 1
-			currentIndex = p.skipValidTag(currentIndex + 1)
+			currentIndex, value = p.skipValidTag(currentIndex + 1)
 
 			if !p.InBound(currentIndex) {
 				return -1
 			}
 
-			temp := string((*p.body)[index:currentIndex])
-			namespace = &temp
+			namespace = value
 		}
 
 		if p.isWhitespace(currentIndex) {
-			p.current.Attributes[name] = string((*p.body)[index:currentIndex])
+			p.current.Attributes[name] = *value
 			currentIndex = p.skipWhitespace(currentIndex + 1)
 			continue
 		}
@@ -1000,30 +995,25 @@ func (p *Parser) parseAttributes(index int) int {
 			return -1
 		}
 
-		literal := (*p.body)[currentIndex+1]
 		index = currentIndex + 2
 
-		if literal != '"' && literal != '\'' {
-			return -1
-		}
-
-		currentIndex = p.ffLiteral(currentIndex+2, literal)
+		currentIndex, value = p.ffLiteral(currentIndex + 1)
 
 		if currentIndex == -1 {
-			return -1
+			break
 		}
 
 		if namespace != nil {
-			p.namespaces[*namespace] = string((*p.body)[index : currentIndex-1])
+			p.namespaces[*namespace] = *value
 		} else {
-			p.current.Attributes[name] = string((*p.body)[index : currentIndex-1])
+			p.current.Attributes[name] = *value
 		}
 
 		currentIndex = p.skipWhitespace(currentIndex)
 		index = currentIndex
 
 		if currentIndex == -1 {
-			return -1
+			break
 		}
 
 		if (*p.body)[currentIndex] == '?' ||
@@ -1033,11 +1023,12 @@ func (p *Parser) parseAttributes(index int) int {
 			if attr, ok := p.current.Attributes["class"]; ok {
 				p.addClasses(attr)
 			}
-			return p.updatePointer(index)
+
+			break
 		}
 	}
 
-	return p.updatePointer(currentIndex)
+	return currentIndex
 }
 
 func (p *Parser) addClasses(attr string) {
@@ -1066,61 +1057,85 @@ func (p *Parser) isAlpha(index int) bool {
 		('a' <= (*p.body)[index] && (*p.body)[index] <= 'z')
 }
 
-func (p *Parser) parseUnescapedQuote(index int, literal uint8) int {
-	for p.InBound(index) && (*p.body)[index] != literal {
-		if (*p.body)[index] == '\\' {
-			index += 2
+func (p *Parser) ffEscapedTagLiteral(index int) (int, *string) {
+	currentIndex := index + 1
+
+	if !p.InBound(currentIndex) || (*p.body)[index] != '\\' {
+		return -1, nil
+	}
+
+	literal := (*p.body)[currentIndex]
+
+	if literal != '"' && literal != '\'' {
+		return -1, nil
+	}
+
+	for p.InBound(currentIndex+1) &&
+		((*p.body)[currentIndex] != '\\' || (*p.body)[currentIndex+1] != literal) {
+		if (*p.body)[currentIndex] == '\\' {
+			currentIndex += 2
 		} else {
-			index++
+			currentIndex++
 		}
 	}
 
-	return index
-}
+	currentIndex += 1
 
-func (p *Parser) parseEscapedQuote(index int, literal uint8) int {
-	for p.InBound(index) && (*p.body)[index] != literal {
-		if (*p.body)[index] == '\\' {
-			if p.InBound(index+1) && (*p.body)[index+1] == literal {
-				return index + 3
-			}
-			index += 2
-		} else {
-			index++
-		}
+	if !p.InBound(currentIndex) {
+		return -1, nil
 	}
 
-	return index
+	attrValue := string(*p.body)[index+2 : currentIndex-1]
+
+	return currentIndex + 1, &attrValue
 }
 
-func (p *Parser) ffLiteral(index int, literal uint8) int {
+func (p *Parser) ffTagLiteral(index int) (int, *string) {
+
 	if !p.InBound(index) {
-		return -1
+		return -1, nil
 	}
 
-	index = p.parseQuote(index, literal)
+	currentIndex := index + 1
+	literal := (*p.body)[index]
 
-	if !p.InBound(index + 1) {
-		return -1
+	if literal != '"' && literal != '\'' {
+		return -1, nil
 	}
 
-	index += 1
+	for p.InBound(currentIndex) && (*p.body)[currentIndex] != literal {
+		if (*p.body)[currentIndex] == '\\' {
+			currentIndex += 2
+		} else {
+			currentIndex++
+		}
+	}
 
-	return p.updatePointer(index)
+	currentIndex += 1
+
+	if !p.InBound(currentIndex) {
+		return -1, nil
+	}
+
+	attrValue := string((*p.body)[index+1 : currentIndex-1])
+
+	return currentIndex, &attrValue
 }
 
-func (p *Parser) skipValidTag(index int) int {
+func (p *Parser) skipValidTag(index int) (int, *string) {
 	if !p.InBound(index) || !p.isValidTagStart(index) {
-		return -1
+		return -1, nil
 	}
 
-	index += 1
+	currentIndex := index + 1
 
-	for p.InBound(index) && p.isValidTagChar(index) {
-		index++
+	for p.InBound(currentIndex) && p.isValidTagChar(currentIndex) {
+		currentIndex++
 	}
 
-	return p.updatePointer(index)
+	attrValue := string((*p.body)[index:currentIndex])
+
+	return currentIndex, &attrValue
 }
 
 func (p *Parser) isValidTagStart(index int) bool {

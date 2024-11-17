@@ -180,11 +180,36 @@ func TestExtract(t *testing.T) {
 	}
 }
 
+func TestAttributes(t *testing.T) {
+	l := []byte(`<bla><div attr="agfdgfdgfdgfd" z "yolo">lol</div></bla>`)
+	c := NewParser(&l, false, nil)
+
+	if c.Query("div").First().Attributes["attr"] != "agfdgfdgfdgfd" {
+		log.Fatal("err")
+	}
+
+	if c.Query("div").First().Attributes["z"] != "z" {
+		log.Fatal("err")
+	}
+
+	if c.Query("div").First().Attributes["yolo"] != "yolo" {
+		log.Fatal("err")
+	}
+}
+
 func TestNewEscapedParser(t *testing.T) {
-	l := []byte("<div attr=\"agfdgfdgfdgfd\">lol</div>")
+	l := []byte("<bla><div attr=\\\"agfdgfdgfdgfd\\\" z \\\"yolo\\\">lol</div></bla>")
 	c := NewEscapedParser(&l)
 
-	if (*c.GetTags("div"))[0].Attributes["attr"] != "agfdgfdgfdgfd" {
+	if c.Query("div").First().Attributes["attr"] != "agfdgfdgfdgfd" {
+		log.Fatal("err")
+	}
+
+	if c.Query("div").First().Attributes["z"] != "z" {
+		log.Fatal("err")
+	}
+
+	if c.Query("div").First().Attributes["yolo"] != "yolo" {
 		log.Fatal("err")
 	}
 }
@@ -194,7 +219,7 @@ func TestEscapedAttributes(t *testing.T) {
 	data := []byte(`<div attr="` + attr + `"></div>`)
 	c := NewParser(&data, false, nil)
 
-	if (*c.GetTags("div"))[0].Attributes["attr"] != attr {
+	if c.Query("div").First().Attributes["attr"] != attr {
 		log.Fatal("escaped attribute not parsed correctly")
 	}
 }
@@ -203,7 +228,7 @@ func TestWildcard(t *testing.T) {
 	data := []byte(`<div attr="a"><li></li><a></a></div><p></p>`)
 	c := NewParser(&data, false, nil)
 
-	if len(*c.GetTags("*")) != 4 {
+	if len(*c.Query("*").GetTags()) != 4 {
 		log.Fatal("wrong size for wildcard array")
 	}
 }
@@ -212,7 +237,7 @@ func TestAttribute(t *testing.T) {
 	data := []byte(`<div attr="a"></div>`)
 	c := NewParser(&data, false, nil)
 
-	if (*c.GetTags("div"))[0].Attributes["attr"] != `a` {
+	if c.Query("div").First().Attributes["attr"] != `a` {
 		log.Fatal("attribute not parsed correctly")
 	}
 }
