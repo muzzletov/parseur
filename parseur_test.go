@@ -12,7 +12,7 @@ func TestIdQuery(t *testing.T) {
 	query := p.Query("#a")
 	result := query.GetTags()
 
-	if len(*result) != 1 || query.First().Name != "span" {
+	if len(*result) != 1 || query.First().Name != "div" {
 		log.Fatal("query result length incorrect")
 	}
 }

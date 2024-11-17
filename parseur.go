@@ -1025,7 +1025,7 @@ func (p *Parser) parseAttributes(index int) int {
 			}
 
 			if attr, ok := p.current.Attributes["id"]; ok {
-				p.setOrAddId(attr, p.current)
+				p.addId(attr, p.current)
 			}
 
 			break
@@ -1169,12 +1169,10 @@ func (p *Parser) computeOffsetList() []*Tag {
 	return t
 }
 
-func (p *Parser) setOrAddId(attr string, current *Tag) {
+func (p *Parser) addId(attr string, current *Tag) {
 	queryHandle := "#" + attr
 
-	if _, ok := p.tagMap[queryHandle]; ok {
-		(*p.tagMap[queryHandle])[0] = current
-	} else {
+	if _, ok := p.tagMap[queryHandle]; !ok {
 		p.addTag(queryHandle, current)
 	}
 }
