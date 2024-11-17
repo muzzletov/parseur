@@ -17,6 +17,22 @@ func TestIdQuery(t *testing.T) {
 	}
 }
 
+func TestUnescapedTag(t *testing.T) {
+	tl := []byte(`<a><p></a></p><br/>`)
+	p := NewParser(&tl, false, nil)
+
+	if p.Query("a").First().Children != nil {
+		log.Fatal("element should not have successors")
+	}
+
+	tl = []byte(`<br<a>`)
+	p = NewParser(&tl, false, nil)
+
+	if p.Query("br").First() != nil {
+		log.Fatal("element should not exist")
+	}
+}
+
 func TestQuery(t *testing.T) {
 	payload := []byte(`<div class="rofl">Hi!</div>How are you?<div class="lol">Bye.</div><span class="rofl"></span>`)
 

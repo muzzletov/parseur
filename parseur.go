@@ -362,9 +362,8 @@ func (p *Parser) GetText() string {
 	return builder.String()
 }
 
-func (p *Parser) GetTagMap() map[string]struct{} {
+func MapFromTerms(text string) *map[string]struct{} {
 	m := make(map[string]struct{})
-	text := p.GetJoinedText(' ')
 	length := len(text)
 
 	for i, k := 0, 0; i < length; i, k = i+1, i+1 {
@@ -379,7 +378,11 @@ func (p *Parser) GetTagMap() map[string]struct{} {
 		m[text[k:i]] = struct{}{}
 	}
 
-	return m
+	return &m
+}
+
+func (p *Parser) GetTagMap() map[string]struct{} {
+	return *MapFromTerms(p.GetJoinedText(' '))
 }
 
 func (p *Parser) GetJoinedText(seperator byte) string {
@@ -663,14 +666,14 @@ func (p *Parser) retrieveFromCache(index int) (int, bool) {
 	currentIndex := index
 
 	if ok {
-		if tag.Body.End == -1 {
+		if tag.Tag.End == -1 {
 			return -1, ok
 		}
 
 		if p.isMETAorLINKtag(tag) {
-			index = tag.Body.End
+			index = tag.Tag.End
 		} else {
-			index = p.parseTagEnd(tag.Body.End, tag.Name)
+			index = p.parseTagEnd(tag.Tag.End, tag.Name)
 		}
 
 		currentIndex = p.skipWhitespace(index)
@@ -715,9 +718,15 @@ func (p *Parser) consumeTag(index int) int {
 	}
 
 	isEndOfTag := p.InBound(currentIndex+1) && (*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>'
+	index = currentIndex
 
 	if p.isMETAorLINKtag(self) {
 		currentIndex = p.handleSelfclosing(currentIndex)
+
+		if currentIndex == -1 {
+			p.current = parent
+			return index
+		}
 	} else if isEndOfTag {
 		currentIndex += 2
 	} else if (*p.body)[currentIndex] == '>' {
@@ -732,10 +741,6 @@ func (p *Parser) consumeTag(index int) int {
 		return -1
 	}
 
-	if currentIndex == -1 {
-		self.Body.End = -1
-	}
-
 	self.Tag = Offset{Start: offset, End: currentIndex}
 
 	p.offsetMap[offset] = self
@@ -744,6 +749,17 @@ func (p *Parser) consumeTag(index int) int {
 	p.current = parent
 
 	parent.Children = append(parent.Children, self)
+
+	if currentIndex == -1 {
+		self.Body.End = -1
+		currentIndex = index + 1
+
+		if len(self.Children) > 0 {
+			parent.Children = append(parent.Children, self.Children...)
+		}
+
+		self.Children = nil
+	}
 
 	return currentIndex
 }
