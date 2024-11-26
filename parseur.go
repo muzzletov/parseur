@@ -128,8 +128,8 @@ type Offset struct {
 }
 
 type Request struct {
-	header http.Header
-	data   []byte
+	Header http.Header
+	Data   []byte
 }
 
 type Tag struct {
@@ -212,8 +212,8 @@ func (c *WebClient) FetchSync(url string) (request *Request, err error) {
 
 	defer resp.Body.Close()
 
-	request.data, err = io.ReadAll(resp.Body)
-	request.header = resp.Header
+	request.Data, err = io.ReadAll(resp.Body)
+	request.Header = resp.Header
 
 	return request, err
 }
@@ -235,10 +235,10 @@ func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
 
 	defer resp.Body.Close()
 
-	request.data, _ = io.ReadAll(resp.Body)
-	request.header = resp.Header
+	request.Data, _ = io.ReadAll(resp.Body)
+	request.Header = resp.Header
 
-	parser := NewParser(&request.data, false, nil)
+	parser := NewParser(&request.Data, false, nil)
 	parser.Request = request
 	return parser, nil
 }
@@ -269,10 +269,10 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 	defer resp.Body.Close()
 
 	buf := make([]byte, c.chunkSize)
-	request.data = make([]byte, 0)
+	request.Data = make([]byte, 0)
 	reader := bufio.NewReader(resp.Body)
 
-	p = NewParser(&request.data, true, hook)
+	p = NewParser(&request.Data, true, hook)
 	p.Request = request
 
 	var n = 0
@@ -280,7 +280,7 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 	for !p.Done {
 		n, err = reader.Read(buf)
 
-		request.data = append(request.data, buf[:n]...)
+		request.Data = append(request.Data, buf[:n]...)
 
 		if err == io.EOF {
 			break
@@ -291,14 +291,14 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 		}
 
 		select {
-		case p.DataChan <- &request.data:
+		case p.DataChan <- &request.Data:
 		default:
 		}
 	}
 
 	if !p.Done {
 		*p.Complete = true
-		p.DataChan <- &request.data
+		p.DataChan <- &request.Data
 		<-p.ParseComplete
 	}
 
