@@ -127,6 +127,11 @@ type Offset struct {
 	End   int
 }
 
+type Request struct {
+	header http.Header
+	data   []byte
+}
+
 type Tag struct {
 	Name       string
 	Namespace  string
@@ -158,6 +163,7 @@ type Parser struct {
 	InBound       func(int) bool
 	OffsetList    func() []*Tag
 	Mu            sync.Mutex
+	Request       *Request
 }
 
 func GetIntersection(a *[]*Tag, b *[]*Tag) *[]*Tag {
@@ -190,7 +196,8 @@ func (c *WebClient) SetUserAgent(agent string) {
 	c.userAgent = agent
 }
 
-func (c *WebClient) FetchSync(url string) (data []byte, err error) {
+func (c *WebClient) FetchSync(url string) (request *Request, err error) {
+	request = &Request{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -205,7 +212,10 @@ func (c *WebClient) FetchSync(url string) (data []byte, err error) {
 
 	defer resp.Body.Close()
 
-	return io.ReadAll(resp.Body)
+	request.data, err = io.ReadAll(resp.Body)
+	request.header = resp.Header
+
+	return request, err
 }
 
 func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
@@ -214,6 +224,8 @@ func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
 		return nil, err
 	}
 
+	request := &Request{}
+
 	req.Header.Set("User-Agent", c.userAgent)
 	resp, err := c.client.Do(req)
 
@@ -223,13 +235,12 @@ func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
 
 	defer resp.Body.Close()
 
-	reader, _ := io.ReadAll(resp.Body)
+	request.data, _ = io.ReadAll(resp.Body)
+	request.header = resp.Header
 
-	data := reader
-
-	p = NewParser(&data, false, nil)
-
-	return p, nil
+	parser := NewParser(&request.data, false, nil)
+	parser.Request = request
+	return parser, nil
 }
 
 func (c *WebClient) GetHttpClient() *http.Client {
@@ -237,7 +248,7 @@ func (c *WebClient) GetHttpClient() *http.Client {
 }
 
 func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parser, err error) {
-
+	request := &Request{}
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
@@ -258,17 +269,18 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 	defer resp.Body.Close()
 
 	buf := make([]byte, c.chunkSize)
-	data := make([]byte, 0)
+	request.data = make([]byte, 0)
 	reader := bufio.NewReader(resp.Body)
 
-	p = NewParser(&data, true, hook)
+	p = NewParser(&request.data, true, hook)
+	p.Request = request
 
 	var n = 0
 
 	for !p.Done {
 		n, err = reader.Read(buf)
 
-		data = append(data, buf[:n]...)
+		request.data = append(request.data, buf[:n]...)
 
 		if err == io.EOF {
 			break
@@ -279,14 +291,14 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 		}
 
 		select {
-		case p.DataChan <- &data:
+		case p.DataChan <- &request.data:
 		default:
 		}
 	}
 
 	if !p.Done {
 		*p.Complete = true
-		p.DataChan <- &data
+		p.DataChan <- &request.data
 		<-p.ParseComplete
 	}
 
