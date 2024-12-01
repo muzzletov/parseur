@@ -7,8 +7,6 @@ import (
 	"log"
 	"math"
 	"net/http"
-	"net/http/cookiejar"
-	"net/url"
 	"strings"
 	"sync"
 )
@@ -18,23 +16,12 @@ const (
 	PARSING = 0
 )
 
-type ExtJar struct {
-	jar  *cookiejar.Jar
-	urls map[string]struct{}
+func (c *WebClient) LoadCookies() {
+	c.jar.Load("cookies.json")
 }
 
-func NewJar() *ExtJar {
-	jar, _ := cookiejar.New(nil)
-	return &ExtJar{jar: jar, urls: make(map[string]struct{})}
-}
-
-func (j *ExtJar) Cookies(u *url.URL) (cookies []*http.Cookie) {
-	return j.jar.Cookies(u)
-}
-
-func (j *ExtJar) SetCookies(u *url.URL, cookies []*http.Cookie) {
-	j.urls[u.Path] = struct{}{}
-	j.jar.SetCookies(u, cookies)
+func (c *WebClient) PersistCookies() {
+	c.jar.Save("cookies.json")
 }
 
 func NewClient() *WebClient {
@@ -128,8 +115,12 @@ type Offset struct {
 }
 
 type Request struct {
-	Header http.Header
-	Data   []byte
+	RequestHeader  *http.Header
+	ResponseHeader *http.Header
+	Data           []byte
+	Payload        *[]byte
+	Url            *string
+	Hook           *func(p *Parser)
 }
 
 type Tag struct {
@@ -196,37 +187,53 @@ func (c *WebClient) SetUserAgent(agent string) {
 	c.userAgent = agent
 }
 
-func (c *WebClient) FetchSync(url string) (request *Request, err error) {
-	request = &Request{}
-	req, err := http.NewRequest("GET", url, nil)
+func (c *WebClient) FetchSync(request *Request) (error) {
+	req, err := http.NewRequest("GET", *request.Url, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
+
+	mergeHeaderFields(request.RequestHeader, &req.Header)
+
 	resp, err := c.client.Do(req)
 
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	defer resp.Body.Close()
 
 	request.Data, err = io.ReadAll(resp.Body)
-	request.Header = resp.Header
+	request.ResponseHeader = &resp.Header
 
-	return request, err
+	return err
 }
 
-func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
-	req, err := http.NewRequest("GET", url, nil)
+func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
+	if srcHeader == nil ||
+		dstHeader == nil { log.Println("src or dst header not set")
+		return
+	}
+
+	for u, i := range *srcHeader {
+		for _, z:= range i {
+			dstHeader.Add(u, z)
+		}
+	}
+}
+
+func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error) {
+	req, err := http.NewRequest("GET", *request.Url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	request := &Request{}
-
 	req.Header.Set("User-Agent", c.userAgent)
+
+	mergeHeaderFields(request.RequestHeader, &req.Header)
+
 	resp, err := c.client.Do(req)
 
 	if err != nil {
@@ -236,7 +243,7 @@ func (c *WebClient) FetchParseSync(url string) (p *Parser, err error) {
 	defer resp.Body.Close()
 
 	request.Data, _ = io.ReadAll(resp.Body)
-	request.Header = resp.Header
+	request.ResponseHeader = &resp.Header
 
 	parser := NewParser(&request.Data, false, nil)
 	parser.Request = request
@@ -247,14 +254,15 @@ func (c *WebClient) GetHttpClient() *http.Client {
 	return c.client
 }
 
-func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parser, err error) {
-	request := &Request{}
-	req, err := http.NewRequest("GET", url, nil)
+func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
+	req, err := http.NewRequest("GET", *request.Url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
+
+	mergeHeaderFields(request.RequestHeader, &req.Header)
 
 	if err != nil {
 		return nil, err
@@ -272,7 +280,7 @@ func (c *WebClient) FetchParseAsync(url string, hook *func(p *Parser)) (p *Parse
 	request.Data = make([]byte, 0)
 	reader := bufio.NewReader(resp.Body)
 
-	p = NewParser(&request.Data, true, hook)
+	p = NewParser(&request.Data, true, request.Hook)
 	p.Request = request
 
 	var n = 0
@@ -383,11 +391,9 @@ func MapFromTerms(text string) *map[string]struct{} {
 		for ; i < length && text[i] != ' '; i++ {
 		}
 
-		if k == i {
-			continue
+		if k != i {
+			m[text[k:i]] = struct{}{}
 		}
-
-		m[text[k:i]] = struct{}{}
 	}
 
 	return &m
