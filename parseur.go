@@ -187,7 +187,29 @@ func (c *WebClient) SetUserAgent(agent string) {
 	c.userAgent = agent
 }
 
-func (c *WebClient) FetchSync(request *Request) (error) {
+func (c *WebClient) Fetch(url string) (*[]byte, error) {
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.client.Do(req)
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+
+	return &data, err
+}
+
+func (c *WebClient) FetchSync(request *Request) error {
 	req, err := http.NewRequest("GET", *request.Url, nil)
 	if err != nil {
 		return err
