@@ -213,7 +213,7 @@ func (c *WebClient) FetchSync(request *Request) (error) {
 
 func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
 	if srcHeader == nil ||
-		dstHeader == nil { log.Println("src or dst header not set")
+		dstHeader == nil {
 		return
 	}
 
