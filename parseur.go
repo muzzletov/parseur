@@ -187,14 +187,24 @@ func (c *WebClient) SetUserAgent(agent string) {
 	c.userAgent = agent
 }
 
-func (c *WebClient) Fetch(url string) (*[]byte, error) {
+func (c *WebClient) setup(u *string) (*http.Request, error) {
+	req, err := http.NewRequest("GET", *u, nil)
 
-	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("User-Agent", c.userAgent)
+
+	return req, nil
+}
+
+func (c *WebClient) Fetch(url string) (*[]byte, error) {
+	req, err := c.setup(&url)
+
+	if err != nil {
+		return nil, err
+	}
 
 	resp, err := c.client.Do(req)
 
@@ -210,14 +220,11 @@ func (c *WebClient) Fetch(url string) (*[]byte, error) {
 }
 
 func (c *WebClient) FetchSync(request *Request) error {
-	req, err := http.NewRequest("GET", *request.Url, nil)
+	req, err := c.prepare(request)
+
 	if err != nil {
 		return err
 	}
-
-	req.Header.Set("User-Agent", c.userAgent)
-
-	mergeHeaderFields(request.RequestHeader, &req.Header)
 
 	resp, err := c.client.Do(req)
 
@@ -247,14 +254,11 @@ func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
 }
 
 func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error) {
-	req, err := http.NewRequest("GET", *request.Url, nil)
+	req, err := c.prepare(request)
+
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Set("User-Agent", c.userAgent)
-
-	mergeHeaderFields(request.RequestHeader, &req.Header)
 
 	resp, err := c.client.Do(req)
 
@@ -276,15 +280,20 @@ func (c *WebClient) GetHttpClient() *http.Client {
 	return c.client
 }
 
-func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
-	req, err := http.NewRequest("GET", *request.Url, nil)
+func (c *WebClient) prepare(request *Request) (*http.Request, error) {
+	req, err := c.setup(request.Url)
+
 	if err != nil {
 		return nil, err
 	}
 
-	req.Header.Set("User-Agent", c.userAgent)
-
 	mergeHeaderFields(request.RequestHeader, &req.Header)
+
+	return req, nil
+}
+
+func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
+	req, err := c.prepare(request)
 
 	if err != nil {
 		return nil, err
