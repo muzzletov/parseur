@@ -10,7 +10,7 @@ import (
 func Test_ExtendedNestedQuery(t *testing.T) {
 	payload := []byte(`<a class="rofl" id="a"><div></div><b><c><e><a><e></e><e class="lol">lol</e></a></e></c></b></a>`)
 	p := NewParser(&payload, false, nil)
-	tags := *p.Query("#a.rofl > b a > e.lol").GetTags()
+	tags := *p.Query("#a.rofl > b a > e.lol").Get()
 
 	if len(tags) != 1 {
 		panic("wrong length")
@@ -58,49 +58,49 @@ func Test_ExtendedQuery(t *testing.T) {
 
 	p := NewParser(&payload, false, nil)
 
-	tags := p.Query("#a.rofl > b").GetTags()
+	tags := p.Query("#a.rofl > b").Get()
 
 	if tags != nil {
 		panic("length doesnt match expected")
 	}
 
-	tags = p.Query("#a.rofl b").GetTags()
+	tags = p.Query("#a.rofl b").Get()
 
 	if (*tags)[0].Name != "b" {
 		panic("wrong tag")
 	}
 
-	tags = p.Query("#a.rofl div").GetTags()
+	tags = p.Query("#a.rofl div").Get()
 
 	if (*tags)[0].Name != "div" {
 		panic("wrong tag")
 	}
 
-	tags = p.Query("#a.rofl").GetTags()
+	tags = p.Query("#a.rofl").Get()
 
 	if (*tags)[0].Name != "a" {
 		panic("wrong tag")
 	}
 
-	tags = p.Query("").GetTags()
+	tags = p.Query("").Get()
 
 	if tags != nil {
 		panic("should return no result")
 	}
 
-	tags = p.Query("a").GetTags()
+	tags = p.Query("a").Get()
 
 	if (*tags)[0].Name != "a" {
 		panic("wrong tag")
 	}
 
-	tags = p.Query("div").GetTags()
+	tags = p.Query("div").Get()
 
 	if len(*tags) != 3 {
 		panic("tags has wrong length")
 	}
 
-	tags = p.Query("div.rofl").GetTags()
+	tags = p.Query("div.rofl").Get()
 
 	if len(*tags) != 1 {
 		panic("tags has wrong length")
@@ -112,10 +112,25 @@ func Test_IdQuery(t *testing.T) {
 
 	p := NewParser(&payload, false, nil)
 	query := p.Query("#a")
-	result := query.GetTags()
+	result := query.Get()
 
 	if len(*result) != 1 || query.First().Name != "div" {
 		log.Fatal("query result length incorrect")
+	}
+}
+
+func Test_Subqueries(t *testing.T) {
+	payload := []byte(`<div class="rofl" id="a"><yolo>Hi!</yolo></div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
+
+	p := NewParser(&payload, false, nil)
+	result := p.Query("#a").Query("yolo").Get()
+
+	if len(*result) != 1 {
+		log.Fatal("query result length incorrect")
+	}
+
+	if (*result)[0].Name != "yolo" {
+		log.Fatal("query result tag incorrect")
 	}
 }
 
@@ -135,16 +150,24 @@ func Test_UnescapedTag(t *testing.T) {
 	}
 }
 
+func Test_Invalid(t *testing.T) {
+	t.Run("handle panic", func(t *testing.T) {
+		defer func() {
+			if recover() == nil {
+				t.Error("Invalid query should panic")
+			}
+		}()
+
+		tl := []byte(`<a><p></a></p><br/>`)
+		p := NewParser(&tl, false, nil)
+		p.Query("a + b").First()
+	})
+}
+
 func Test_Query(t *testing.T) {
 	payload := []byte(`<div class="rofl">Hi!</div>How are you?<div class="lol">Bye.</div><span class="rofl"></span>`)
 
 	p := NewParser(&payload, false, nil)
-	result := p.Query("div").Intersect(p.Query(".lol")).GetTags()
-
-	if result == nil ||
-		len(*result) != 1 {
-		log.Fatal("query result length incorrect")
-	}
 
 	if p.GetRoot().Children[0] != p.Query("div").First() ||
 		p.GetRoot().Children[1] != p.Query("div").Last() {
@@ -358,7 +381,7 @@ func Test_Wildcard(t *testing.T) {
 	data := []byte(`<div attr="a"><li></li><a></a></div><p></p>`)
 	c := NewParser(&data, false, nil)
 
-	if len(*c.Query("*").GetTags()) != 4 {
+	if len(*c.Query("*").Get()) != 4 {
 		log.Fatal("wrong size for wildcard array")
 	}
 }

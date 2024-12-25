@@ -1,14 +1,14 @@
 package parseur
 
 import (
+	"log"
 	"sort"
 )
 
 type Query struct {
-	query      string
-	tags       *[]*Tag
-	parser     *Parser
-	subQueries *[]*Query
+	query  string
+	tags   *[]*Tag
+	parser *Parser
 }
 
 func (p *Parser) Query(query string) *Query {
@@ -17,20 +17,17 @@ func (p *Parser) Query(query string) *Query {
 }
 
 func (q *Query) Query(query string) *Query {
-	newQ := Query{query: query, parser: q.parser, subQueries: nil}
-
-	if q.subQueries == nil {
-		q.subQueries = &[]*Query{}
+	if q.tags == nil {
+		q.tags = q.parseQuery()
 	}
 
-	list := append(*q.subQueries, &newQ)
-	q.subQueries = &list
+	q.query = " " + query
 
-	return &newQ
+	return q
 }
 
 func (q *Query) Last() *Tag {
-	tags := q.GetTags()
+	tags := q.Get()
 
 	if tags == nil {
 		return nil
@@ -46,7 +43,7 @@ func (q *Query) Last() *Tag {
 }
 
 func (q *Query) First() *Tag {
-	tags := q.GetTags()
+	tags := q.Get()
 
 	if tags == nil || len(*tags) == 0 {
 		return nil
@@ -58,24 +55,19 @@ func (q *Query) Intersect(query *Query) *Query {
 	queryIntersection := Query{
 		parser: q.parser,
 		query:  q.query + " + " + query.query,
-		tags:   GetIntersection(q.GetTags(), query.GetTags()),
+		tags:   GetIntersection(q.Get(), query.Get()),
 	}
 
 	return &queryIntersection
 }
 
-func (q *Query) GetTags() *[]*Tag {
-	if q.tags == nil {
-		q.execute()
-	}
+func (q *Query) Get() *[]*Tag {
+	q.execute()
+
 	return q.tags
 }
 
 func (q *Query) execute() *Query {
-	if q.tags != nil {
-		return q
-	}
-
 	if q.parser == nil {
 		return q
 	}
@@ -155,9 +147,11 @@ func (q *Query) parseQuery() *[]*Tag {
 		default:
 			qualifiers, i = q.parseQualifiers(i)
 
-			if qualifiers != nil {
-				tags = q.extractQualifiers(qualifiers)
+			if qualifiers == nil || len(*qualifiers) == 0 {
+				log.Panicf("invalid query '%s'", q.query)
 			}
+
+			tags = q.extractQualifiers(qualifiers)
 
 			qualifiers = nil
 
