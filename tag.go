@@ -29,3 +29,7 @@ func (t *Tag) First(name string) *Tag {
 
 	return nil
 }
+
+func (p *Parser) InnerText(t *Tag) string {
+	return string((*p.body)[t.Body.Start:t.Body.End])
+}
