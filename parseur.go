@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"log"
 	"math"
 	"net/http"
 	"strings"
@@ -32,74 +31,6 @@ func NewClient() *WebClient {
 		chunkSize: 64000,
 		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
 	}
-}
-
-type Query struct {
-	query  string
-	tags   *[]*Tag
-	parser *Parser
-}
-
-func (p *Parser) Query(query string) *Query {
-	q := Query{query: query, parser: p}
-	return &q
-}
-
-func (q *Query) Last() *Tag {
-	tags := q.GetTags()
-
-	if tags == nil {
-		return nil
-	}
-
-	length := len(*tags)
-
-	if length == 0 {
-		return nil
-	}
-
-	return (*tags)[length-1]
-}
-
-func (q *Query) First() *Tag {
-	tags := q.GetTags()
-
-	if tags == nil || len(*tags) == 0 {
-		return nil
-	}
-	return (*tags)[0]
-}
-
-func (q *Query) Intersect(query *Query) *Query {
-	queryIntersection := Query{
-		parser: q.parser,
-		query:  q.query + " + " + query.query,
-		tags:   GetIntersection(q.GetTags(), query.GetTags()),
-	}
-
-	return &queryIntersection
-}
-
-func (q *Query) GetTags() *[]*Tag {
-	if q.tags == nil {
-		q.execute()
-	}
-	return q.tags
-}
-
-func (q *Query) execute() *Query {
-	if q.tags != nil {
-		return q
-	}
-
-	if q.parser == nil {
-		log.Fatal("q.parser == nil")
-		return q
-	}
-
-	q.tags = q.parser.GetTags(q.query)
-
-	return q
 }
 
 type WebClient struct {
@@ -247,7 +178,7 @@ func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
 	}
 
 	for u, i := range *srcHeader {
-		for _, z:= range i {
+		for _, z := range i {
 			dstHeader.Add(u, z)
 		}
 	}
@@ -364,20 +295,6 @@ func (p *Parser) Filter(name string) []*Tag {
 	}
 
 	return tags
-}
-
-func (t *Tag) FindAll(name string) *[]*Tag {
-	children := make([]*Tag, 0)
-
-	for _, c := range t.Children {
-		if c.Name == name {
-			children = append(children, c)
-		}
-
-		children = append(children, *c.FindAll(name)...)
-	}
-
-	return &children
 }
 
 func (p *Parser) Sync(index int) bool {

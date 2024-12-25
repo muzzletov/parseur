@@ -7,6 +7,106 @@ import (
 	"testing"
 )
 
+func Test_ExtendedNestedQuery(t *testing.T) {
+	payload := []byte(`<a class="rofl" id="a"><div></div><b><c><e><a><e></e><e class="lol">lol</e></a></e></c></b></a>`)
+	p := NewParser(&payload, false, nil)
+	tags := *p.Query("#a.rofl > b a > e.lol").GetTags()
+
+	if len(tags) != 1 {
+		panic("wrong length")
+	}
+
+	if tags[0].Name != "e" {
+		panic("wrong tag")
+	}
+
+	if string(payload[tags[0].Body.Start:tags[0].Body.End]) != "lol" {
+		panic("wrong innerhtml")
+	}
+}
+
+func Test_QualifierSort(t *testing.T) {
+	payload := []byte(``)
+	p := NewParser(&payload, false, nil)
+	qualifiers, _ := p.Query(".rofl#a > a").parseQualifiers(0)
+
+	if len(*qualifiers) != 2 {
+		panic("wrong qualifier length")
+	}
+
+	if (*qualifiers)[0] != "#a" {
+		panic("wrong qualifier order")
+	}
+
+	if (*qualifiers)[1] != ".rofl" {
+		panic("wrong qualifier order")
+	}
+}
+
+func Test_ExtendedQuery(t *testing.T) {
+	payload := []byte(`
+		<a class="rofl" id="a">
+			<div>
+				<b></b>
+			</div>Hi!
+		</a>
+		<div class="rofl" id="a">Hi!</div>
+		How are you?
+		<div class="lol">Bye.</div>
+		<span id="a" class="rofl"></span>
+	`)
+
+	p := NewParser(&payload, false, nil)
+
+	tags := p.Query("#a.rofl > b").GetTags()
+
+	if tags != nil {
+		panic("length doesnt match expected")
+	}
+
+	tags = p.Query("#a.rofl b").GetTags()
+
+	if (*tags)[0].Name != "b" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("#a.rofl div").GetTags()
+
+	if (*tags)[0].Name != "div" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("#a.rofl").GetTags()
+
+	if (*tags)[0].Name != "a" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("").GetTags()
+
+	if tags != nil {
+		panic("should return no result")
+	}
+
+	tags = p.Query("a").GetTags()
+
+	if (*tags)[0].Name != "a" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("div").GetTags()
+
+	if len(*tags) != 3 {
+		panic("tags has wrong length")
+	}
+
+	tags = p.Query("div.rofl").GetTags()
+
+	if len(*tags) != 1 {
+		panic("tags has wrong length")
+	}
+}
+
 func Test_IdQuery(t *testing.T) {
 	payload := []byte(`<div class="rofl" id="a">Hi!</div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
 
@@ -275,7 +375,7 @@ func Test_Attribute(t *testing.T) {
 func Test_CookieJar(t *testing.T) {
 	cookieJar := NewJar()
 
-	testURL, _ := url.Parse("http://example.com")
+	testURL, _ := url.Parse("https://example.com")
 	cookies := []*http.Cookie{
 		{Name: "test1", Value: "value1"},
 		{Name: "test2", Value: "value2"},
