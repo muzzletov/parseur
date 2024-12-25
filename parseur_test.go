@@ -5,7 +5,77 @@ import (
 	"testing"
 )
 
-func TestIdQuery(t *testing.T) {
+func Test_ExtendedNestedQuery(t *testing.T) {
+	payload := []byte(`<a class="rofl" id="a"><div></div><b><c><e><a><e></e><e class="lol">lol</e></a></e></c></b></a>`)
+	p := NewParser(&payload, false, nil)
+	tags := *p.Query("#a.rofl > b a > e.lol").GetTags()
+
+	if len(tags) != 1 {
+		panic("wrong length")
+	}
+
+	if tags[0].Name != "e" {
+		panic("wrong tag")
+	}
+
+	if string(payload[tags[0].Body.Start:tags[0].Body.End]) != "lol" {
+		panic("wrong innerhtml")
+	}
+}
+
+func Test_ExtendedQuery(t *testing.T) {
+	payload := []byte(`<a class="rofl" id="a"><div><b></b></div>Hi!</a><div class="rofl" id="a">Hi!</div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
+	p := NewParser(&payload, false, nil)
+	tags := p.Query("#a.rofl > b").GetTags()
+
+	if tags == nil {
+		panic("length doesnt match expected")
+	}
+
+	tags = p.Query("#a.rofl b").GetTags()
+
+	if (*tags)[0].Name != "b" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("#a.rofl div").GetTags()
+
+	if (*tags)[0].Name != "div" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("#a.rofl").GetTags()
+
+	if (*tags)[0].Name != "a" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("").GetTags()
+
+	if tags != nil {
+		panic("should return no result")
+	}
+
+	tags = p.Query("a").GetTags()
+
+	if (*tags)[0].Name != "a" {
+		panic("wrong tag")
+	}
+
+	tags = p.Query("div").GetTags()
+
+	if len(*tags) != 3 {
+		panic("tags has wrong length")
+	}
+
+	tags = p.Query("div.rofl").GetTags()
+
+	if len(*tags) != 1 {
+		panic("tags has wrong length")
+	}
+}
+
+func Test_IdQuery(t *testing.T) {
 	payload := []byte(`<div class="rofl" id="a">Hi!</div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
 
 	p := NewParser(&payload, false, nil)
@@ -17,7 +87,7 @@ func TestIdQuery(t *testing.T) {
 	}
 }
 
-func TestUnescapedTag(t *testing.T) {
+func Test_UnescapedTag(t *testing.T) {
 	tl := []byte(`<a><p></a></p><br/>`)
 	p := NewParser(&tl, false, nil)
 
@@ -33,7 +103,7 @@ func TestUnescapedTag(t *testing.T) {
 	}
 }
 
-func TestQuery(t *testing.T) {
+func Test_Query(t *testing.T) {
 	payload := []byte(`<div class="rofl">Hi!</div>How are you?<div class="lol">Bye.</div><span class="rofl"></span>`)
 
 	p := NewParser(&payload, false, nil)
@@ -62,7 +132,7 @@ func TestQuery(t *testing.T) {
 	}
 }
 
-func TestIntersection(t *testing.T) {
+func Test_Intersection(t *testing.T) {
 	a := Tag{Name: "a"}
 	b := Tag{Name: "b"}
 	c := Tag{Name: "c"}
@@ -84,7 +154,7 @@ func TestIntersection(t *testing.T) {
 	}
 }
 
-func TestBounds(t *testing.T) {
+func Test_Bounds(t *testing.T) {
 	payload := "<div>fsdjkdksfdjskjkdfs</div>"
 	body := []byte(payload)
 
@@ -113,7 +183,7 @@ func TestBounds(t *testing.T) {
 	}
 }
 
-func TestBody(t *testing.T) {
+func Test_Body(t *testing.T) {
 	payload := "<div>fsdjkdksfdjskjkdfs</div>"
 	body := []byte(payload)
 
@@ -142,7 +212,7 @@ func TestBody(t *testing.T) {
 	}
 }
 
-func TestClasses(t *testing.T) {
+func Test_Classes(t *testing.T) {
 	current := Tag{Attributes: map[string]string{"class": "a rofl lol rofl"}}
 	parser := Parser{length: 12, tagMap: map[string]*[]*Tag{}, current: &current}
 	parser.addClasses(current.Attributes["class"])
@@ -171,7 +241,7 @@ func check(tags *[]*Tag, tag *Tag, ok bool) {
 	log.Fatal("element not part of map")
 }
 
-func TestExtract(t *testing.T) {
+func Test_Extract(t *testing.T) {
 	html := []byte(`<a>fdjasjhfsadjh<div>a<HAHAHA>z</HAHAHA></div><p></p></a>`)
 	c := NewParser(&html, false, nil)
 	extract := c.GetText()
@@ -208,7 +278,7 @@ func TestExtract(t *testing.T) {
 	}
 }
 
-func TestAttributes(t *testing.T) {
+func Test_Attributes(t *testing.T) {
 	l := []byte(`<bla><div attr="agfdgfdgfdgfd" z "yolo">lol</div></bla>`)
 	c := NewParser(&l, false, nil)
 
@@ -225,7 +295,7 @@ func TestAttributes(t *testing.T) {
 	}
 }
 
-func TestNewEscapedParser(t *testing.T) {
+func Test_NewEscapedParser(t *testing.T) {
 	l := []byte("<bla><div attr=\\\"agfdgfdgfdgfd\\\" z \\\"yolo\\\">lol</div></bla>")
 	c := NewEscapedParser(&l)
 
@@ -242,7 +312,7 @@ func TestNewEscapedParser(t *testing.T) {
 	}
 }
 
-func TestEscapedAttributes(t *testing.T) {
+func Test_EscapedAttributes(t *testing.T) {
 	attr := `{\"arr\":\"b\"}`
 	data := []byte(`<div attr="` + attr + `"></div>`)
 	c := NewParser(&data, false, nil)
@@ -252,7 +322,7 @@ func TestEscapedAttributes(t *testing.T) {
 	}
 }
 
-func TestWildcard(t *testing.T) {
+func Test_Wildcard(t *testing.T) {
 	data := []byte(`<div attr="a"><li></li><a></a></div><p></p>`)
 	c := NewParser(&data, false, nil)
 
@@ -261,7 +331,7 @@ func TestWildcard(t *testing.T) {
 	}
 }
 
-func TestAttribute(t *testing.T) {
+func Test_Attribute(t *testing.T) {
 	data := []byte(`<div attr="a"></div>`)
 	c := NewParser(&data, false, nil)
 
