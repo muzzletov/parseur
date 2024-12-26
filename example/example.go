@@ -9,13 +9,13 @@ func fetchOpenGraphTags() {
 	client := parseur.NewClient()
 
 	z := func(p *parseur.Parser) {
-		q := p.First("head")
+		q := p.Query("head").First()
 
 		if q == nil || q.Body.End == parseur.PARSING { // this makes sure we get all the tags
 			return
 		}
 
-		htmlTags := p.Filter("meta")
+		htmlTags := *p.Query("meta").Get()
 
 		for _, u := range htmlTags {
 			if token, ok := u.Attributes["property"]; ok && token == "og:video:tag" {
@@ -27,7 +27,11 @@ func fetchOpenGraphTags() {
 		}
 	}
 
-	_, err := client.FetchParseAsync("https://www.youtube.com/watch?v=pQO1t2Y627Y", &z)
+	u := "https://www.youtube.com/watch?v=pQO1t2Y627Y"
+	_, err := client.FetchParseAsync(&parseur.Request{
+		Url:  &u,
+		Hook: &z,
+	})
 
 	if err != nil {
 		log.Fatal(err.Error())
