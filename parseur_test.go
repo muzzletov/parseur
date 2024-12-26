@@ -142,6 +142,22 @@ func Test_QueryTagExtended(t *testing.T) {
 	if divs[2].InnerText() != "c" {
 		panic("wrong element at offset")
 	}
+
+	payload = []byte(`<div><lol>a</lol></div><div><lol>b</lol></div><div><lol>c</lol></div>`)
+	p = NewParser(&payload, false, nil)
+	divs = *p.Query("div").Get()
+
+	if divs[0].Query("lol").First().InnerText() != "a" {
+		panic("wrong element at offset")
+	}
+
+	if divs[1].Query("lol").First().InnerText() != "b" {
+		panic("wrong element at offset")
+	}
+
+	if divs[2].Query("lol").First().InnerText() != "c" {
+		panic("wrong element at offset")
+	}
 }
 
 func Test_IdQuery(t *testing.T) {
