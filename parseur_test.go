@@ -117,6 +117,10 @@ func Test_QueryTag(t *testing.T) {
 	div := p.Query("#a").First()
 	span := div.Query("span").First()
 
+	if p.Query("#a > div").First().InnerText() != "Bye." {
+		panic("wrong innertext")
+	}
+
 	if span.Name != "span" {
 		panic("wrong element")
 	}
