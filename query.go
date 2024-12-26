@@ -26,7 +26,7 @@ func (q *Query) Query(query string) *Query {
 	return q
 }
 
-func (q *Query) Last() *Tag {
+func (q *Query) Last() *QueryTag {
 	tags := q.Get()
 
 	if tags == nil {
@@ -42,7 +42,7 @@ func (q *Query) Last() *Tag {
 	return (*tags)[length-1]
 }
 
-func (q *Query) First() *Tag {
+func (q *Query) First() *QueryTag {
 	tags := q.Get()
 
 	if tags == nil || len(*tags) == 0 {
@@ -51,20 +51,29 @@ func (q *Query) First() *Tag {
 	return (*tags)[0]
 }
 
-func (q *Query) Intersect(query *Query) *Query {
-	queryIntersection := Query{
-		parser: q.parser,
-		query:  q.query + " + " + query.query,
-		tags:   GetIntersection(q.Get(), query.Get()),
-	}
-
-	return &queryIntersection
+type QueryTag struct {
+	*Tag
+	Query func(query string) *Query
 }
 
-func (q *Query) Get() *[]*Tag {
+func (q *Query) toQueryTags() *[]*QueryTag {
+	if q.tags == nil {
+		return nil
+	}
+
+	tags := make([]*QueryTag, len(*q.tags))
+
+	for i, tag := range *q.tags {
+		tags[i] = &QueryTag{tag, q.parser.Query}
+	}
+
+	return &tags
+}
+
+func (q *Query) Get() *[]*QueryTag {
 	q.execute()
 
-	return q.tags
+	return q.toQueryTags()
 }
 
 func (q *Query) execute() *Query {

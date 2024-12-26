@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"io"
-	"math"
 	"net/http"
 	"strings"
 	"sync"
@@ -86,28 +85,6 @@ type Parser struct {
 	OffsetList    func() []*Tag
 	Mu            sync.Mutex
 	Request       *Request
-}
-
-func GetIntersection(a *[]*Tag, b *[]*Tag) *[]*Tag {
-	if a == nil || b == nil {
-		return nil
-	}
-
-	length := int(math.Min(float64(len(*a)), float64(len(*b))))
-	tagMap := make(map[*Tag]struct{}, length)
-	result := make([]*Tag, 0, length)
-
-	for _, t := range *a {
-		tagMap[t] = struct{}{}
-	}
-
-	for _, t := range *b {
-		if _, ok := tagMap[t]; ok {
-			result = append(result, t)
-		}
-	}
-
-	return &result
 }
 
 func (c *WebClient) SetChunkSize(size int) {

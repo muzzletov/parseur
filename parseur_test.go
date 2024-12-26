@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+func init() {
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func Test_ExtendedNestedQuery(t *testing.T) {
 	payload := []byte(`<a class="rofl" id="a"><div></div><b><c><e><a><e></e><e class="lol">lol</e></a></e></c></b></a>`)
 	p := NewParser(&payload, false, nil)
@@ -107,6 +111,17 @@ func Test_ExtendedQuery(t *testing.T) {
 	}
 }
 
+func Test_QueryTag(t *testing.T) {
+	payload := []byte(`<div class="rofl" id="a">Hi!How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span></div>`)
+	p := NewParser(&payload, false, nil)
+	div := p.Query("#a").First()
+	span := div.Query("span").First()
+
+	if span.Name != "span" {
+		panic("wrong element")
+	}
+}
+
 func Test_IdQuery(t *testing.T) {
 	payload := []byte(`<div class="rofl" id="a">Hi!</div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
 
@@ -119,7 +134,7 @@ func Test_IdQuery(t *testing.T) {
 	}
 }
 
-func Test_Subqueries(t *testing.T) {
+func Test_SubQueries(t *testing.T) {
 	payload := []byte(`<div class="rofl" id="a"><yolo>Hi!</yolo></div>How are you?<div class="lol">Bye.</div><span id="a" class="rofl"></span>`)
 
 	p := NewParser(&payload, false, nil)
@@ -169,12 +184,12 @@ func Test_Query(t *testing.T) {
 
 	p := NewParser(&payload, false, nil)
 
-	if p.GetRoot().Children[0] != p.Query("div").First() ||
-		p.GetRoot().Children[1] != p.Query("div").Last() {
+	if p.GetRoot().Children[0] != p.Query("div").First().Tag ||
+		p.GetRoot().Children[1] != p.Query("div").Last().Tag {
 		log.Fatal("wrong elements returned")
 	}
 
-	if p.Query("span").First() != p.Query("span").Last() {
+	if p.Query("span").First().Tag != p.Query("span").Last().Tag {
 		log.Fatal("wrong elements returned")
 	}
 
@@ -182,30 +197,8 @@ func Test_Query(t *testing.T) {
 		log.Fatal("wrong elements returned")
 	}
 
-	if p.Query(".rofl").Last() != p.Query("span").Last() {
+	if p.Query(".rofl").Last().Tag != p.Query("span").Last().Tag {
 		log.Fatal("wrong elements returned")
-	}
-}
-
-func Test_Intersection(t *testing.T) {
-	a := Tag{Name: "a"}
-	b := Tag{Name: "b"}
-	c := Tag{Name: "c"}
-	firstList := []*Tag{&a}
-	secondList := []*Tag{&b, &c}
-	if len(*GetIntersection(&firstList, &secondList)) != 0 {
-		log.Fatal("wrong array size")
-	}
-
-	secondList = append(secondList, &a)
-	result := *GetIntersection(&firstList, &secondList)
-
-	if len(result) != 1 {
-		log.Fatal("wrong array size")
-	}
-
-	if result[0].Name != "a" {
-		log.Fatal("wrong resulting element")
 	}
 }
 
