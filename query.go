@@ -53,8 +53,15 @@ func (q *Query) First() *QueryTag {
 
 type QueryTag struct {
 	*Tag
-	parser    *Parser
-	InnerText func() string
+	parser *Parser
+}
+
+func (qt *QueryTag) InnerText() string {
+	return qt.parser.value(qt.Tag.Body.Start, qt.Tag.Body.End)
+}
+
+func (qt *QueryTag) OuterText() string {
+	return qt.parser.value(qt.Tag.Tag.Start, qt.Tag.Tag.End)
 }
 
 func (q *Query) toQueryTags() *[]*QueryTag {
@@ -65,7 +72,7 @@ func (q *Query) toQueryTags() *[]*QueryTag {
 	tags := make([]*QueryTag, len(*q.tags))
 
 	for i, tag := range *q.tags {
-		tags[i] = &QueryTag{tag, q.parser, func() string { return q.parser.InnerText(tag) }}
+		tags[i] = &QueryTag{tag, q.parser}
 	}
 
 	return &tags

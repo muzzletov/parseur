@@ -1,73 +1,30 @@
 package parseur
 
 import (
-	"bufio"
 	"bytes"
-	"io"
-	"net/http"
 	"strings"
 	"sync"
 )
+
+var scriptBytes = []byte{
+	0x3c, 0x2f, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74,
+}
 
 const (
 	FAILED  = -1
 	PARSING = 0
 )
 
-func (c *WebClient) LoadCookies() {
-	c.jar.Load("cookies.json")
-}
-
-func (c *WebClient) PersistCookies() {
-	c.jar.Save("cookies.json")
-}
-
-func NewClient() *WebClient {
-	jar := NewJar()
-	return &WebClient{
-		client:    &http.Client{Jar: jar},
-		jar:       jar,
-		chunkSize: 64000,
-		userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-	}
-}
-
-type WebClient struct {
-	chunkSize int
-	client    *http.Client
-	jar       *ExtJar
-	userAgent string
-}
-
 type Offset struct {
 	Start int
 	End   int
-}
-
-type Request struct {
-	RequestHeader  *http.Header
-	ResponseHeader *http.Header
-	Data           []byte
-	Payload        *[]byte
-	Url            *string
-	Hook           *func(p *Parser)
-}
-
-type Tag struct {
-	Name       string
-	Namespace  string
-	Children   []*Tag
-	Attributes map[string]string
-	Body       Offset
-	Tag        Offset
 }
 
 type Parser struct {
 	length        int
 	lastIndex     int
 	html          bool
-	async         bool
-	success       bool
+	runAsync      bool
 	Done          bool
 	root          *Tag
 	ffLiteral     func(int) (int, *string)
@@ -85,171 +42,6 @@ type Parser struct {
 	OffsetList    func() []*Tag
 	Mu            sync.Mutex
 	Request       *Request
-}
-
-func (c *WebClient) SetChunkSize(size int) {
-	c.chunkSize = size
-}
-
-func (c *WebClient) SetUserAgent(agent string) {
-	c.userAgent = agent
-}
-
-func (c *WebClient) setup(u *string) (*http.Request, error) {
-	req, err := http.NewRequest("GET", *u, nil)
-
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("User-Agent", c.userAgent)
-
-	return req, nil
-}
-
-func (c *WebClient) Fetch(url string) (*[]byte, error) {
-	req, err := c.setup(&url)
-
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.client.Do(req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	data, err := io.ReadAll(resp.Body)
-
-	return &data, err
-}
-
-func (c *WebClient) FetchSync(request *Request) error {
-	req, err := c.prepare(request)
-
-	if err != nil {
-		return err
-	}
-
-	resp, err := c.client.Do(req)
-
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-
-	request.Data, err = io.ReadAll(resp.Body)
-	request.ResponseHeader = &resp.Header
-
-	return err
-}
-
-func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
-	if srcHeader == nil ||
-		dstHeader == nil {
-		return
-	}
-
-	for u, i := range *srcHeader {
-		for _, z := range i {
-			dstHeader.Add(u, z)
-		}
-	}
-}
-
-func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error) {
-	req, err := c.prepare(request)
-
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.client.Do(req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	request.Data, _ = io.ReadAll(resp.Body)
-	request.ResponseHeader = &resp.Header
-
-	parser := NewParser(&request.Data, false, nil)
-	parser.Request = request
-	return parser, nil
-}
-
-func (c *WebClient) GetHttpClient() *http.Client {
-	return c.client
-}
-
-func (c *WebClient) prepare(request *Request) (*http.Request, error) {
-	req, err := c.setup(request.Url)
-
-	if err != nil {
-		return nil, err
-	}
-
-	mergeHeaderFields(request.RequestHeader, &req.Header)
-
-	return req, nil
-}
-
-func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
-	req, err := c.prepare(request)
-
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := c.client.Do(req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	buf := make([]byte, c.chunkSize)
-	request.Data = make([]byte, 0)
-	reader := bufio.NewReader(resp.Body)
-
-	p = NewParser(&request.Data, true, request.Hook)
-	p.Request = request
-
-	var n = 0
-
-	for !p.Done {
-		n, err = reader.Read(buf)
-
-		request.Data = append(request.Data, buf[:n]...)
-
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil {
-			return nil, err
-		}
-
-		select {
-		case p.DataChan <- &request.Data:
-		default:
-		}
-	}
-
-	if !p.Done {
-		*p.Complete = true
-		p.DataChan <- &request.Data
-		<-p.ParseComplete
-	}
-
-	return p, nil
 }
 
 func (p *Parser) First(name string) *Tag {
@@ -274,7 +66,7 @@ func (p *Parser) Filter(name string) []*Tag {
 	return tags
 }
 
-func (p *Parser) Sync(index int) bool {
+func (p *Parser) sync(index int) bool {
 	return p.length > index
 }
 func (p *Parser) GetText() string {
@@ -305,6 +97,10 @@ func (p *Parser) GetText() string {
 	reduce(p.GetRoot())
 
 	return builder.String()
+}
+
+func (p *Parser) value(start, end int) string {
+	return string((*p.body)[start:end])
 }
 
 func MapFromTerms(text string) *map[string]struct{} {
@@ -359,9 +155,9 @@ func (p *Parser) GetJoinedText(seperator byte) string {
 	return builder.String()
 }
 
-func (p *Parser) Async(index int) bool {
+func (p *Parser) async(index int) bool {
 	if *p.Complete {
-		p.InBound = p.Sync
+		p.InBound = p.sync
 		p.length = len(*p.body)
 
 		return p.InBound(index)
@@ -401,7 +197,7 @@ func NewEscapedParser(body *[]byte) *Parser {
 	parser.root = parser.current
 	parser.ffLiteral = parser.ffEscapedTagLiteral
 	parser.length = len(*body)
-	parser.InBound = parser.Sync
+	parser.InBound = parser.sync
 
 	parser.parse()
 
@@ -410,7 +206,7 @@ func NewEscapedParser(body *[]byte) *Parser {
 
 func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 	parser := createParser(body)
-	parser.async = async
+	parser.runAsync = async
 	parser.hook = hook
 	parser.OffsetList = parser.computeOffsetList
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
@@ -419,15 +215,15 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 
 	parser.ffLiteral = parser.ffTagLiteral
 
-	if parser.async {
+	if parser.runAsync {
 		parser.DataChan = make(chan *[]byte)
 		parser.ParseComplete = make(chan struct{})
-		parser.InBound = parser.Async
+		parser.InBound = parser.async
 
 		go parser.parse()
 	} else {
 		parser.length = len(*body)
-		parser.InBound = parser.Sync
+		parser.InBound = parser.sync
 
 		parser.parse()
 	}
@@ -442,11 +238,9 @@ func (p *Parser) parse() {
 		index = 0
 	}
 
-	currentIndex := p.parseBody(index)
+	_ = p.parseBody(index)
 
-	p.success = currentIndex != -1
-
-	if p.async {
+	if p.runAsync {
 		p.Done = true
 		select {
 		case <-p.DataChan:
@@ -454,10 +248,6 @@ func (p *Parser) parse() {
 		}
 		p.ParseComplete <- struct{}{}
 	}
-}
-
-func (p *Parser) Success() bool {
-	return p.success
 }
 
 func (p *Parser) GetBody() []byte {
@@ -493,23 +283,6 @@ func (p *Parser) parseDoctype(index int) int {
 	p.html = strings.ToLower(p.current.Name) == "doctype" && p.current.Attributes["html"] == "html"
 	p.current = parent
 	return index + 1
-}
-
-type Buffer struct {
-	buffer *bytes.Buffer
-	Mu     sync.Mutex
-}
-
-func (b *Buffer) Write(bytes []byte) {
-	b.Mu.Lock()
-	b.buffer.Write(bytes)
-	b.Mu.Unlock()
-}
-
-func (b *Buffer) Read() []byte {
-	b.Mu.Lock()
-	defer b.Mu.Unlock()
-	return b.buffer.Bytes()
 }
 
 func (p *Parser) consumeNamespaceTag(index int) int {
@@ -746,9 +519,7 @@ func (p *Parser) ffScriptBody(index int) int {
 			return -1
 		}
 
-		isScriptEnd := bytes.Equal((*p.body)[index:index+8], []byte{
-			0x3c, 0x2f, 0x73, 0x63, 0x72, 0x69, 0x70, 0x74,
-		})
+		isScriptEnd := bytes.Equal((*p.body)[index:index+8], scriptBytes)
 
 		if isScriptEnd {
 			k := p.skipWhitespace(index + 8)
@@ -784,10 +555,6 @@ func (p *Parser) parseRegularBody(index int) int {
 	}
 
 	return currentIndex
-}
-
-func (p *Parser) LastPointer() int {
-	return p.lastIndex
 }
 
 func (p *Parser) parseTagName(index int) int {
@@ -994,15 +761,19 @@ func (p *Parser) parseAttributes(index int) int {
 	return currentIndex
 }
 
-func (p *Parser) addClasses(attr string) {
-	length := len(attr)
+func (p *Parser) addClasses(classes string) {
+	length := len(classes)
+
 	for i, k := 0, 0; i < length; i++ {
-		for k = i; i < length && attr[i] == ' '; i, k = i+1, k+1 {
+		for k = i; i < length && classes[i] == ' '; {
+			i++
+			k++
 		}
-		for ; i < length && attr[i] != ' '; i++ {
+		for i < length && classes[i] != ' ' {
+			i++
 		}
 
-		id := "." + attr[k:i]
+		id := "." + classes[k:i]
 		p.addTag(id, p.current)
 	}
 }
@@ -1128,8 +899,8 @@ func (p *Parser) computeOffsetList() []*Tag {
 	return t
 }
 
-func (p *Parser) addId(attr string, current *Tag) {
-	queryHandle := "#" + attr
+func (p *Parser) addId(value string, current *Tag) {
+	queryHandle := "#" + value
 
 	if _, ok := p.tagMap[queryHandle]; !ok {
 		p.addTag(queryHandle, current)

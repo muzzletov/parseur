@@ -244,27 +244,27 @@ func Test_Bounds(t *testing.T) {
 	payload := "<div>fsdjkdksfdjskjkdfs</div>"
 	body := []byte(payload)
 
-	tag := NewParser(&body, false, nil).First("div")
+	tag := NewParser(&body, false, nil).Query("div").First()
 
-	if payload[(*tag).Tag.Start:(*tag).Tag.End] != payload[0:29] {
+	if tag.OuterText() != payload[0:29] {
 		log.Fatal("tag offset wrong")
 	}
 
 	payload = "<div></div>"
 	body = []byte(payload)
 
-	tag = NewParser(&body, false, nil).First("div")
+	tag = NewParser(&body, false, nil).Query("div").First()
 
-	if payload[(*tag).Tag.Start:(*tag).Tag.End] != payload[0:11] {
+	if tag.OuterText() != payload[0:11] {
 		log.Fatal("tag offset wrong")
 	}
 
 	payload = "<div />"
 	body = []byte(payload)
 
-	tag = NewParser(&body, false, nil).First("div")
+	tag = NewParser(&body, false, nil).Query("div").First()
 
-	if payload[(*tag).Tag.Start:(*tag).Tag.End] != "<div />" {
+	if tag.OuterText() != "<div />" {
 		log.Fatal("tag offset wrong")
 	}
 }
