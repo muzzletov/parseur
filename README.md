@@ -1,58 +1,108 @@
 # parseur
-a simple html parser that allows for async hooks
-and preemptive cancelling of requests based
-on what the hook's evaluates to.
 
-see example folder for an example.
+`parseur` is a simple HTML parser that allows for asynchronous hooks and preemptive cancelling of requests based on the evaluation of hooks.
 
-**API at a glance**:
+## Features
 
-func NewEscapedParser(body *[]byte) *Parser
+- Asynchronous hooks
+- Preemptive request cancellation
+- Simple and intuitive API
 
-func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser
+## Installation
 
-func (p *Parser) GetBody() []byte
+To install the `parseur` library, run:
 
-func (p *Parser) GetJoinedText(seperator byte) string
+```bash
+go get github.com/muzzletov/parseur
+```
 
-func (p *Parser) GetRoot() *Tag
+## Usage
 
-func (p *Parser) GetSize() int
+Here is a simple example of how to use `parseur`:
 
-func (p *Parser) GetTagMap() map[string]struct{}
+```go
+package main
 
-func (p *Parser) GetTags(query string) *[]*Tag
+import (
+	"github.com/muzzletov/parseur"
+	"log"
+)
 
-func (p *Parser) GetText() string
+func fetchOpenGraphTags() {
+	client := parseur.NewClient()
 
-func (p *Parser) Query(query string) *Query
+	z := func(p *parseur.Parser) {
+		q := p.Query("head").First()
 
-func (q *Query) First() *QueryTag
+		if q == nil || q.Body.End == parseur.PARSING { // this makes sure we get all the tags
+			return
+		}
 
-func (q *Query) Last() *QueryTag
+		htmlTags := *p.Query("meta").Get()
 
-func (q *Query) Get() *[]*QueryTag
+		for _, u := range htmlTags {
+			if token, ok := u.Attributes["property"]; ok && token == "og:video:tag" {
+				p.InBound = func(i int) bool {
+					return false
+				}
+				println(u.Attributes["content"])
+			}
+		}
+	}
 
-func (q *Query) Query(query string) *Query
+	u := "https://www.youtube.com/watch?v=pQO1t2Y627Y"
+	_, err := client.FetchParseAsync(&parseur.Request{
+		Url:  &u,
+		Hook: &z,
+	})
 
-func (qt *QueryTag) Query(query string) *Query
+	if err != nil {
+		log.Fatal(err.Error())
+		return
+	}
+}
 
-func NewClient() *WebClient
+func main() {
+	fetchOpenGraphTags()
+}
+```
 
-func (c *WebClient) Fetch(url string) (*[]byte, error)
+## API at a Glance
 
-func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error)
+### Parsing Functions
 
-func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error)
+- `func NewEscapedParser(body *[]byte) *Parser`
+- `func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser`
+- `func (p *Parser) GetBody() []byte`
+- `func (p *Parser) GetJoinedText(separator byte) string`
+- `func (p *Parser) GetRoot() *Tag`
+- `func (p *Parser) GetSize() int`
+- `func (p *Parser) GetTagMap() map[string]struct{}`
+- `func (p *Parser) GetTags(query string) *[]*Tag`
+- `func (p *Parser) GetText() string`
+- `func (p *Parser) Query(query string) *Query`
 
-func (c *WebClient) FetchSync(request *Request) error
+### Query Functions
 
-func (c *WebClient) GetHttpClient() *http.Client
+- `func (q *Query) First() *QueryTag`
+- `func (q *Query) Last() *QueryTag`
+- `func (q *Query) Get() *[]*QueryTag`
+- `func (q *Query) Query(query string) *Query`
+- `func (qt *QueryTag) Query(query string) *Query`
 
-func (c *WebClient) LoadCookies()
+### Web Client Functions
 
-func (c *WebClient) PersistCookies()
+- `func NewClient() *WebClient`
+- `func (c *WebClient) Fetch(url string) (*[]byte, error)`
+- `func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error)`
+- `func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error)`
+- `func (c *WebClient) FetchSync(request *Request) error`
+- `func (c *WebClient) GetHttpClient() *http.Client`
+- `func (c *WebClient) LoadCookies()`
+- `func (c *WebClient) PersistCookies()`
+- `func (c *WebClient) SetChunkSize(size int)`
+- `func (c *WebClient) SetUserAgent(agent string)`
 
-func (c *WebClient) SetChunkSize(size int)
+## Examples
 
-func (c *WebClient) SetUserAgent(agent string)
+For more examples, please refer to the `example` folder in the repository.
