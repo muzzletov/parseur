@@ -30,13 +30,13 @@ func (q *Query) Last() *QueryTag {
 	tags := q.Get()
 
 	if tags == nil {
-		return nil
+		return &QueryTag{}
 	}
 
 	length := len(*tags)
 
 	if length == 0 {
-		return nil
+		return &QueryTag{}
 	}
 
 	return (*tags)[length-1]
@@ -46,8 +46,9 @@ func (q *Query) First() *QueryTag {
 	tags := q.Get()
 
 	if tags == nil || len(*tags) == 0 {
-		return nil
+		return &QueryTag{}
 	}
+
 	return (*tags)[0]
 }
 
@@ -76,6 +77,10 @@ func (q *Query) toQueryTags() *[]*QueryTag {
 	}
 
 	return &tags
+}
+
+func (qt *QueryTag) Exists() bool {
+	return qt.Tag != nil && qt.Body.End != PARSING
 }
 
 func (qt *QueryTag) Query(query string) *Query {

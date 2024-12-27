@@ -198,7 +198,7 @@ func Test_UnescapedTag(t *testing.T) {
 	tl = []byte(`<br<a>`)
 	p = NewParser(&tl, false, nil)
 
-	if p.Query("br").First() != nil {
+	if p.Query("br").First().Exists() {
 		log.Fatal("element should not exist")
 	}
 }
@@ -231,7 +231,7 @@ func Test_Query(t *testing.T) {
 		log.Fatal("wrong elements returned")
 	}
 
-	if p.Query("body").First() != nil {
+	if p.Query("body").First().Exists() {
 		log.Fatal("wrong elements returned")
 	}
 

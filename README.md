@@ -32,9 +32,9 @@ func fetchOpenGraphTags() {
 	client := parseur.NewClient()
 
 	z := func(p *parseur.Parser) {
-		q := p.Query("head").First()
+		exists := p.Query("head").First().Exists()
 
-		if q == nil || q.Body.End == parseur.PARSING { // this makes sure we get all the tags
+		if !exists { // this makes sure we get all the tags
 			return
 		}
 
