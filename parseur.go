@@ -15,6 +15,22 @@ const (
 	PARSING = 0
 )
 
+var selfclosingTagsMap = map[string]struct{}{
+	"meta":   {},
+	"link":   {},
+	"br":     {},
+	"input":  {},
+	"source": {},
+	"hr":     {},
+	"track":  {},
+	"wbr":    {},
+	"param":  {},
+	"embed":  {},
+	"col":    {},
+	"base":   {},
+	"area":   {},
+}
+
 type Offset struct {
 	Start int
 	End   int
@@ -39,7 +55,7 @@ type Parser struct {
 	namespaces    map[string]string
 	tagMap        map[string]*[]*Tag
 	InBound       func(int) bool
-	OffsetList    func() []*Tag
+	GetOffsetList func() []*Tag
 	Mu            sync.Mutex
 	Request       *Request
 }
@@ -69,6 +85,7 @@ func (p *Parser) Filter(name string) []*Tag {
 func (p *Parser) sync(index int) bool {
 	return p.length > index
 }
+
 func (p *Parser) GetText() string {
 	builder := strings.Builder{}
 	var reduce func(*Tag) = nil
@@ -191,7 +208,7 @@ func createParser(body *[]byte) *Parser {
 
 func NewEscapedParser(body *[]byte) *Parser {
 	parser := createParser(body)
-	parser.OffsetList = parser.computeOffsetList
+	parser.GetOffsetList = parser.computeOffsetList
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
 	parser.lastIndex = 0
 	parser.root = parser.current
@@ -208,7 +225,7 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 	parser := createParser(body)
 	parser.runAsync = async
 	parser.hook = hook
-	parser.OffsetList = parser.computeOffsetList
+	parser.GetOffsetList = parser.computeOffsetList
 	parser.current = &Tag{Children: make([]*Tag, 0), Name: "root"}
 	parser.lastIndex = 0
 	parser.root = parser.current
@@ -353,7 +370,8 @@ func (p *Parser) parseTagEnd(index int, name string) int {
 	length := len(name) + index + 2
 
 	for i, z := 0, index+2; z < length; i, z = i+1, z+1 {
-		if !p.InBound(z) || (*p.body)[z] != name[i] {
+		notInBoundOrWrongTag := !p.InBound(z) || (*p.body)[z] != name[i]
+		if notInBoundOrWrongTag {
 			return -1
 		}
 	}
@@ -367,41 +385,32 @@ func (p *Parser) parseTagEnd(index int, name string) int {
 	return -1
 }
 
-func (p *Parser) isMETAorLINKtag(t *Tag) bool {
-	return t.Name == "meta" ||
-		t.Name == "link" ||
-		t.Name == "img" ||
-		t.Name == "input" ||
-		t.Name == "source" ||
-		t.Name == "br" ||
-		t.Name == "hr"
-}
-
 func (p *Parser) retrieveFromCache(index int) (int, bool) {
 	tag, ok := p.offsetMap[index]
-	currentIndex := index
 
-	if ok {
-		if tag.Tag.End == -1 {
-			return -1, ok
-		}
-
-		if p.isMETAorLINKtag(tag) {
-			index = tag.Tag.End
-		} else {
-			index = p.parseTagEnd(tag.Tag.End, tag.Name)
-		}
-
-		currentIndex = p.skipWhitespace(index)
-
-		if currentIndex != -1 {
-			index = currentIndex
-		}
-
-		return index, ok
+	if !ok {
+		return -1, ok
 	}
 
-	return -1, ok
+	currentIndex := index
+
+	if tag.Tag.End == -1 {
+		return -1, ok
+	}
+
+	if _, ok := selfclosingTagsMap[tag.Name]; ok {
+		index = tag.Tag.End
+	} else {
+		index = p.parseTagEnd(tag.Tag.End, tag.Name)
+	}
+
+	currentIndex = p.skipWhitespace(index)
+
+	if currentIndex != -1 {
+		index = currentIndex
+	}
+
+	return index, ok
 }
 
 func (p *Parser) consumeTag(index int) int {
@@ -436,7 +445,7 @@ func (p *Parser) consumeTag(index int) int {
 	isEndOfTag := p.InBound(currentIndex+1) && (*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>'
 	index = currentIndex
 
-	if p.isMETAorLINKtag(self) {
+	if _, ok := selfclosingTagsMap[self.Name]; ok {
 		currentIndex = p.handleSelfclosing(currentIndex)
 
 		if currentIndex == -1 {
@@ -799,8 +808,9 @@ func (p *Parser) ffEscapedTagLiteral(index int) (int, *string) {
 	}
 
 	literal := (*p.body)[currentIndex]
+	isNotCorrectLiteral := literal != '"' && literal != '\''
 
-	if literal != '"' && literal != '\'' {
+	if isNotCorrectLiteral {
 		return -1, nil
 	}
 
@@ -892,10 +902,11 @@ func (p *Parser) computeOffsetList() []*Tag {
 	}
 
 	if p.Done {
-		p.OffsetList = func() []*Tag {
+		p.GetOffsetList = func() []*Tag {
 			return t
 		}
 	}
+
 	return t
 }
 
