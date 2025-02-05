@@ -82,10 +82,6 @@ func (p *Parser) Filter(name string) []*Tag {
 	return tags
 }
 
-func (p *Parser) sync(index int) bool {
-	return p.length > index
-}
-
 func (p *Parser) GetText() string {
 	builder := strings.Builder{}
 	var reduce func(*Tag) = nil
@@ -141,7 +137,7 @@ func (p *Parser) GetTagMap() map[string]struct{} {
 	return *MapFromTerms(p.GetJoinedText(' '))
 }
 
-func (p *Parser) GetJoinedText(seperator byte) string {
+func (p *Parser) GetJoinedText(separator byte) string {
 	builder := strings.Builder{}
 	var reduce func(*Tag) = nil
 
@@ -153,7 +149,7 @@ func (p *Parser) GetJoinedText(seperator byte) string {
 
 			if length > 0 {
 				builder.Write(p.GetBody()[offset : offset+length])
-				builder.WriteByte(seperator)
+				builder.WriteByte(separator)
 			}
 
 			reduce(child)
@@ -163,7 +159,7 @@ func (p *Parser) GetJoinedText(seperator byte) string {
 
 		if offset < tag.Body.End {
 			builder.Write(p.GetBody()[offset:tag.Body.End])
-			builder.WriteByte(seperator)
+			builder.WriteByte(separator)
 		}
 	}
 
@@ -172,10 +168,13 @@ func (p *Parser) GetJoinedText(seperator byte) string {
 	return builder.String()
 }
 
+func (p *Parser) sync(index int) bool {
+	return p.length > index
+}
+
 func (p *Parser) async(index int) bool {
 	if *p.Complete {
 		p.InBound = p.sync
-		p.length = len(*p.body)
 
 		return p.InBound(index)
 	} else if p.length > index {
@@ -572,6 +571,7 @@ func (p *Parser) parseTagName(index int) int {
 	if !p.ffLetter(index) {
 		return -1
 	}
+
 	var value *string
 
 	index, value = p.ffLiteral(index)
