@@ -17,11 +17,12 @@ func fetchOpenGraphTags() {
 
 		htmlTags := *p.Query("meta").Get()
 
+		p.InBound = func(i int) bool {
+			return false
+		}
+
 		for _, u := range htmlTags {
 			if token, ok := u.Attributes["property"]; ok && token == "og:video:tag" {
-				p.InBound = func(i int) bool {
-					return false
-				}
 				println(u.Attributes["content"])
 			}
 		}
