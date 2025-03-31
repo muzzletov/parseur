@@ -336,10 +336,7 @@ func (p *Parser) consumeNamespaceTag(index int) int {
 }
 
 func (p *Parser) isWhitespace(index int) bool {
-	return (*p.body)[index] == ' ' ||
-		(*p.body)[index] == '\t' ||
-		(*p.body)[index] == '\n' ||
-		(*p.body)[index] == '\r'
+	return (*p.body)[index] < 33
 }
 
 func (p *Parser) skipWhitespace(index int) int {
