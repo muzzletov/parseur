@@ -136,7 +136,9 @@ func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error) {
 
 	defer resp.Body.Close()
 
-	*request.Data, _ = io.ReadAll(resp.Body)
+	data, _ := io.ReadAll(resp.Body)
+
+	request.Data = &data
 	request.ResponseHeader = &resp.Header
 
 	parser := NewParser(request.Data, false, nil)
