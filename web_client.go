@@ -55,7 +55,7 @@ func (c *WebClient) SetUserAgent(agent string) {
 }
 
 func (c *WebClient) setup(r *Request) (*http.Request, *context.CancelFunc, error) {
-	var reader *bytes.Reader = nil
+	var reader bytes.Reader
 	var method = r.Method
 
 	if method == "" {
@@ -63,11 +63,11 @@ func (c *WebClient) setup(r *Request) (*http.Request, *context.CancelFunc, error
 	}
 
 	if r.Payload != nil {
-		reader = bytes.NewReader(*r.Payload)
+		reader = *bytes.NewReader(*r.Payload)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, r.Method, *r.Url, reader)
+	req, err := http.NewRequestWithContext(ctx, r.Method, *r.Url, &reader)
 
 	if err != nil {
 		cancel()
