@@ -327,6 +327,31 @@ func Test_Classes(t *testing.T) {
 	}
 }
 
+func Test_Value(t *testing.T) {
+	html := []byte(``)
+	c := NewParser(&html, false, nil)
+
+	if c.value(0, 1) != "" {
+		log.Fatal("out of bound request for substring should result in empty string being returned")
+	}
+
+	html = []byte(`invalid`)
+
+	c = NewParser(&html, false, nil)
+
+	if c.value(1, 0) != "" {
+		log.Fatal("invalid range indices should result in empty string")
+	}
+
+	if c.value(-1, 0) != "" {
+		log.Fatal("invalid range indices should result in empty string")
+	}
+
+	if c.value(0, -1) != "" {
+		log.Fatal("invalid range indices should result in empty string")
+	}
+}
+
 func Test_Extract(t *testing.T) {
 	html := []byte(`<a>fdjasjhfsadjh<div>a<HAHAHA>z</HAHAHA></div><p></p></a>`)
 	c := NewParser(&html, false, nil)

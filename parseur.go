@@ -113,6 +113,10 @@ func (p *Parser) GetText() string {
 }
 
 func (p *Parser) value(start, end int) string {
+	if len(*p.body) <= end || start > end || start < 0 {
+		return ""
+	}
+
 	return string((*p.body)[start:end])
 }
 
