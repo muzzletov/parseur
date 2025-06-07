@@ -2,6 +2,7 @@ package parseur
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -15,6 +16,7 @@ type Request struct {
 	Url            *string
 	Hook           *func(p *Parser)
 	*context.CancelFunc
+	Method string
 }
 
 type WebClient struct {
@@ -52,9 +54,20 @@ func (c *WebClient) SetUserAgent(agent string) {
 	c.userAgent = agent
 }
 
-func (c *WebClient) setup(u *string) (*http.Request, *context.CancelFunc, error) {
+func (c *WebClient) setup(r *Request) (*http.Request, *context.CancelFunc, error) {
+	var reader *bytes.Reader = nil
+	var method = r.Method
+
+	if method == "" {
+		method = "GET"
+	}
+
+	if r.Payload != nil {
+		reader = bytes.NewReader(*r.Payload)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, "GET", *u, nil)
+	req, err := http.NewRequestWithContext(ctx, r.Method, *r.Url, reader)
 
 	if err != nil {
 		cancel()
@@ -67,7 +80,7 @@ func (c *WebClient) setup(u *string) (*http.Request, *context.CancelFunc, error)
 }
 
 func (c *WebClient) Fetch(url string) (*[]byte, error) {
-	req, cancel, err := c.setup(&url)
+	req, cancel, err := c.setup(&Request{Url: &url})
 
 	if err != nil {
 		return nil, err
@@ -102,7 +115,9 @@ func (c *WebClient) FetchSync(request *Request) error {
 
 	defer resp.Body.Close()
 
-	*request.Data, err = io.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
+
+	request.Data = &data
 	request.ResponseHeader = &resp.Header
 
 	return err
@@ -122,28 +137,16 @@ func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
 }
 
 func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error) {
-	req, err := c.prepare(request)
+	err = c.FetchSync(request)
 
-	if err != nil {
-		return nil, err
+	if request.Data == nil {
+		return nil, nil
 	}
-
-	resp, err := c.client.Do(req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	defer resp.Body.Close()
-
-	data, _ := io.ReadAll(resp.Body)
-
-	request.Data = &data
-	request.ResponseHeader = &resp.Header
 
 	parser := NewParser(request.Data, false, nil)
 	parser.Request = request
-	return parser, nil
+
+	return parser, err
 }
 
 func (c *WebClient) GetHttpClient() *http.Client {
@@ -151,7 +154,7 @@ func (c *WebClient) GetHttpClient() *http.Client {
 }
 
 func (c *WebClient) prepare(request *Request) (*http.Request, error) {
-	req, cancel, err := c.setup(request.Url)
+	req, cancel, err := c.setup(request)
 
 	if err != nil {
 		return nil, err
