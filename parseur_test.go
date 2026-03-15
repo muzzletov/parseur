@@ -29,6 +29,21 @@ func Test_ExtendedNestedQuery(t *testing.T) {
 	}
 }
 
+func Test_Multiline(t *testing.T) {
+	payload := []byte(`<a href="sometext.html"
+ title="carreer"
+
+
+>Jobs</a>`)
+	p := NewParser(&payload, false, nil)
+	a := p.Query("a").First()
+
+	if a.InnerText() != "Jobs" {
+		panic("element not aprsed correctly")
+	}
+
+}
+
 func Test_QualifierSort(t *testing.T) {
 	payload := []byte(``)
 	p := NewParser(&payload, false, nil)
@@ -123,6 +138,16 @@ func Test_QueryTag(t *testing.T) {
 
 	if span.Name != "span" {
 		panic("wrong element")
+	}
+}
+
+func Test_InnerText(t *testing.T) {
+	payload := []byte(`<div class="rofl" id="a">Hi!How are you?<div class="lol">Bye.</div></div>`)
+	p := NewParser(&payload, false, nil)
+	// TODO: order is depth-first
+	text := (*p.Query("div").Get())[1].InnerText()
+	if text != "Hi!How are you?Bye." {
+		panic("wrong innertext")
 	}
 }
 
@@ -449,6 +474,29 @@ func Test_Attribute(t *testing.T) {
 	if c.Query("div").First().Attributes["attr"] != `a` {
 		log.Fatal("attribute not parsed correctly")
 	}
+}
+
+func Test_MultipleCandidates(t *testing.T) {
+	data := []byte(`<table></table><table><tbody></tbody></table><table><tbody><tr>SUCCESS</tr></tbody></table>`)
+	c := NewParser(&data, false, nil)
+	element := c.Query("table tbody tr").First()
+	if element == nil {
+		log.Fatal("element not found")
+	}
+
+	if element.InnerText() != "SUCCESS" {
+		log.Fatal("wrong element")
+	}
+}
+
+func Test_MultipleSubCandidates(t *testing.T) {
+	data := []byte(`<table></table><table><tbody></tbody></table><table><tbody><tr>SUCCESS</tr><tr>SUCCESS</tr><tr>SUCCESS</tr></tbody></table>`)
+	c := NewParser(&data, false, nil)
+	elements := c.Query("table tbody tr").Get()
+	if len(*elements) != 3 {
+		log.Fatal("wrong count")
+	}
+
 }
 
 func Test_CookieJar(t *testing.T) {
