@@ -3,6 +3,7 @@ package parseur
 import (
 	"log"
 	"sort"
+	"strings"
 )
 
 type Query struct {
@@ -58,7 +59,31 @@ type QueryTag struct {
 }
 
 func (qt *QueryTag) InnerText() string {
-	return qt.parser.value(qt.Tag.Body.Start, qt.Tag.Body.End)
+		builder := strings.Builder{}
+		var reduce func(*Tag) = nil
+
+		reduce = func(tag *Tag) {
+			offset := tag.Body.Start
+			for _, child := range tag.Children {
+				length := child.Tag.Start - offset
+
+				if length > 0 {
+					builder.WriteString(qt.parser.value(offset, offset+length))
+				}
+
+				reduce(child)
+
+				offset = child.Tag.End
+			}
+
+			if offset < tag.Body.End {
+				builder.WriteString(qt.parser.value(offset, tag.Body.End))
+			}
+		}
+
+		reduce(qt.Tag)
+
+		return builder.String()
 }
 
 func (qt *QueryTag) OuterText() string {
