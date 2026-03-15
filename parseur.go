@@ -103,7 +103,6 @@ func (p *Parser) GetText() string {
 
 		if offset < tag.Body.End {
 			builder.Write(p.GetBody()[offset:tag.Body.End])
-			return
 		}
 	}
 
