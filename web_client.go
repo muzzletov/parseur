@@ -67,7 +67,7 @@ func (c *WebClient) setup(r *Request) (*http.Request, *context.CancelFunc, error
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	req, err := http.NewRequestWithContext(ctx, r.Method, *r.Url, &reader)
+	req, err := http.NewRequestWithContext(ctx, method, *r.Url, &reader)
 
 	if err != nil {
 		cancel()
@@ -200,7 +200,9 @@ func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
 	if err != nil {
 		return nil, err
 	}
-
+	
+	defer resp.Body.Close()
+	
 	buf := make([]byte, c.chunkSize)
 	data := make([]byte, 0, 4*c.chunkSize)
 	dataPtr := &data
@@ -235,7 +237,6 @@ func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
 		}
 	}
 
-	err = resp.Body.Close()
 	(*request.CancelFunc)()
 
 	if !p.Done {
