@@ -329,7 +329,7 @@ func (p *Parser) consumeNamespaceTag(index int) int {
 		return -1
 	}
 
-	isNamespaceTag := (*p.body)[currentIndex] == '?' && (*p.body)[currentIndex+1] == '>'
+	isNamespaceTag := (*p.body)[currentIndex] == '?' && p.InBound(currentIndex+1) && (*p.body)[currentIndex+1] == '>'
 
 	if isNamespaceTag {
 		p.namespaceTag = p.current
@@ -441,7 +441,7 @@ func (p *Parser) consumeTag(index int) int {
 		return -1
 	}
 
-	isEndOfTag := p.InBound(currentIndex+1) && (*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>'
+	isEndOfTag := (*p.body)[currentIndex] == '/' && p.InBound(currentIndex+1) && (*p.body)[currentIndex+1] == '>'
 	index = currentIndex
 
 	if _, ok := selfclosingTagsMap[self.Name]; ok {
