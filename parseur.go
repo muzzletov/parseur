@@ -665,7 +665,7 @@ func (p *Parser) consumeComment(index int) int {
 
 	terminated := false
 
-	for ; p.InBound(index+1) && !terminated; index++ {
+	for ; p.InBound(index+2) && !terminated; index++ {
 		terminated =
 			(*p.body)[index] == '-' &&
 				(*p.body)[index+1] == '-' &&
