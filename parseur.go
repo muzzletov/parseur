@@ -498,8 +498,7 @@ func (p *Parser) addTag(id string, item *Tag) {
 }
 
 func (p *Parser) handleSelfclosing(index int) int {
-	currentIndex := index
-	currentIndex = p.skipWhitespace(currentIndex)
+	currentIndex := p.skipWhitespace(index)
 
 	if (*p.body)[currentIndex] == '>' {
 		return currentIndex + 1
@@ -677,8 +676,12 @@ func (p *Parser) consumeComment(index int) int {
 }
 
 func (p *Parser) parseAttributes(index int) int {
+	if index == -1 {
+		return -1
+	}
+	
 	currentIndex := index
-
+	
 	if p.InBound(currentIndex+1) &&
 		(*p.body)[currentIndex] == '/' &&
 		(*p.body)[currentIndex+1] == '>' {
