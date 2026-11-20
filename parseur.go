@@ -2,6 +2,7 @@ package parseur
 
 import (
 	"bytes"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -61,13 +62,13 @@ type Parser struct {
 }
 
 func (p *Parser) First(name string) *Tag {
+	var first *Tag
 	for _, tag := range p.offsetMap {
-		if tag.Name == name {
-			return tag
+		if tag.Name == name && (first == nil || tag.Tag.Start < first.Tag.Start) {
+			first = tag
 		}
 	}
-
-	return nil
+	return first
 }
 
 func (p *Parser) Filter(name string) []*Tag {
@@ -79,6 +80,7 @@ func (p *Parser) Filter(name string) []*Tag {
 		}
 	}
 
+	sort.Slice(tags, func(i, j int) bool { return tags[i].Tag.Start < tags[j].Tag.Start })
 	return tags
 }
 
@@ -172,10 +174,13 @@ func (p *Parser) GetJoinedText(separator byte) string {
 }
 
 func (p *Parser) sync(index int) bool {
-	return p.length > index
+	return index >= 0 && p.length > index
 }
 
 func (p *Parser) async(index int) bool {
+	if index < 0 {
+		return false
+	}
 	if *p.Complete {
 		p.InBound = p.sync
 
@@ -236,7 +241,7 @@ func NewParser(body *[]byte, async bool, hook *func(p *Parser)) *Parser {
 
 	if parser.runAsync {
 		parser.DataChan = make(chan *[]byte)
-		parser.ParseComplete = make(chan struct{})
+		parser.ParseComplete = make(chan struct{}, 1)
 		parser.InBound = parser.async
 
 		go parser.parse()
@@ -288,8 +293,8 @@ func (p *Parser) parseDoctype(index int) int {
 	}
 	parent := p.current
 	index = p.parseTagName(index + 1)
-
-	if index == -1 {
+	if index == -1 || !p.InBound(index) {
+		p.current = parent
 		return -1
 	}
 
@@ -329,7 +334,8 @@ func (p *Parser) consumeNamespaceTag(index int) int {
 		return -1
 	}
 
-	isNamespaceTag := (*p.body)[currentIndex] == '?' && p.InBound(currentIndex+1) && (*p.body)[currentIndex+1] == '>'
+	isNamespaceTag := p.InBound(currentIndex) && (*p.body)[currentIndex] == '?' &&
+		p.InBound(currentIndex+1) && (*p.body)[currentIndex+1] == '>'
 
 	if isNamespaceTag {
 		p.namespaceTag = p.current
@@ -350,7 +356,9 @@ func (p *Parser) skipWhitespace(index int) int {
 	for p.InBound(index) && p.isWhitespace(index) {
 		index++
 	}
-
+	if !p.InBound(index) {
+		return -1
+	}
 	return index
 }
 
@@ -433,10 +441,13 @@ func (p *Parser) consumeTag(index int) int {
 		return -1
 	}
 
-	currentIndex = p.parseTagName(index + 1)
+	currentIndex = p.parseTagName(offset + 1)
 	self := p.current
-
 	if currentIndex == -1 {
+		p.current = parent
+		return -1
+	}
+	if !p.InBound(currentIndex) {
 		p.current = parent
 		return -1
 	}
@@ -499,7 +510,9 @@ func (p *Parser) addTag(id string, item *Tag) {
 
 func (p *Parser) handleSelfclosing(index int) int {
 	currentIndex := p.skipWhitespace(index)
-
+	if currentIndex == -1 {
+		return -1
+	}
 	if (*p.body)[currentIndex] == '>' {
 		return currentIndex + 1
 	}
@@ -522,11 +535,11 @@ func (p *Parser) ffScriptBody(index int) int {
 			index++
 		}
 
-		if !p.InBound(index + 9) {
+		if !p.InBound(index + 7) {
 			return -1
 		}
 
-		isScriptEnd := bytes.Equal((*p.body)[index:index+8], scriptBytes)
+		isScriptEnd := bytes.EqualFold((*p.body)[index:index+8], scriptBytes)
 
 		if isScriptEnd {
 			k := p.skipWhitespace(index + 8)
@@ -581,10 +594,12 @@ func (p *Parser) parseTagName(index int) int {
 
 	current := &Tag{}
 
-	if (*p.body)[index] == ':' {
+	if p.InBound(index) && (*p.body)[index] == ':' {
 		current.Namespace = *value
-		currentIndex = index + 1
 		index, value = p.skipValidTag(index + 1)
+		if index == -1 {
+			return -1
+		}
 	}
 
 	current.Name = *value
@@ -675,57 +690,58 @@ func (p *Parser) consumeComment(index int) int {
 
 }
 
+func (p *Parser) isTagClose(i int) bool {
+	if i < 0 || !p.InBound(i) {
+		return false
+	}
+	c := (*p.body)[i]
+	if c == '>' {
+		return true
+	}
+	return (c == '?' || c == '/') && p.InBound(i+1) && (*p.body)[i+1] == '>'
+}
+
+func (p *Parser) indexAttributes() {
+	if attr, ok := p.current.Attributes["class"]; ok {
+		p.addClasses(attr)
+	}
+	if attr, ok := p.current.Attributes["id"]; ok {
+		p.addId(attr, p.current)
+	}
+}
+
 func (p *Parser) parseAttributes(index int) int {
-	if index == -1 {
-		return -1
-	}
-	
 	currentIndex := index
-	
-	if p.InBound(currentIndex+1) &&
-		(*p.body)[currentIndex] == '/' &&
-		(*p.body)[currentIndex+1] == '>' {
-		return currentIndex
-	}
 
 	for currentIndex != -1 {
-		var namespace *string = nil
-		var value *string = nil
-
-		c, value := p.ffLiteral(currentIndex)
-
-		if c == -1 {
-			c, value = p.skipValidTag(currentIndex)
-		}
-
-		currentIndex = c
-
-		if currentIndex == -1 || !p.InBound(currentIndex) {
-			return -1
-		}
-
-		name := *value
-
-		if (*p.body)[currentIndex] == '>' {
-			p.current.Attributes[name] = *value
+		if p.isTagClose(currentIndex) {
+			p.indexAttributes()
 			return currentIndex
 		}
 
-		if name == "xmlns" &&
-			(*p.body)[currentIndex] == ':' {
-			index = currentIndex + 1
-			currentIndex, value = p.skipValidTag(currentIndex + 1)
+		var namespace *string
 
-			if !p.InBound(currentIndex) {
+		c, value := p.ffLiteral(currentIndex)
+		if c == -1 {
+			c, value = p.skipValidTag(currentIndex)
+		}
+		currentIndex = c
+		if currentIndex == -1 || !p.InBound(currentIndex) {
+			return -1
+		}
+		name := *value
+
+		if name == "xmlns" && (*p.body)[currentIndex] == ':' {
+			currentIndex, value = p.skipValidTag(currentIndex + 1)
+			if currentIndex == -1 || !p.InBound(currentIndex) {
 				return -1
 			}
-
 			namespace = value
 		}
 
-		if p.isWhitespace(currentIndex) {
+		if p.isWhitespace(currentIndex) || p.isTagClose(currentIndex) {
 			p.current.Attributes[name] = *value
-			currentIndex = p.skipWhitespace(currentIndex + 1)
+			currentIndex = p.skipWhitespace(currentIndex)
 			continue
 		}
 
@@ -733,12 +749,9 @@ func (p *Parser) parseAttributes(index int) int {
 			return -1
 		}
 
-		index = currentIndex + 2
-
 		currentIndex, value = p.ffLiteral(currentIndex + 1)
-
 		if currentIndex == -1 {
-			break
+			return -1
 		}
 
 		if namespace != nil {
@@ -748,45 +761,14 @@ func (p *Parser) parseAttributes(index int) int {
 		}
 
 		currentIndex = p.skipWhitespace(currentIndex)
-		index = currentIndex
-
-		if currentIndex == -1 {
-			break
-		}
-
-		if (*p.body)[currentIndex] == '>' ||
-			((*p.body)[currentIndex] == '?' && (*p.body)[currentIndex+1] == '>') ||
-			((*p.body)[currentIndex] == '/' && (*p.body)[currentIndex+1] == '>') {
-
-			if attr, ok := p.current.Attributes["class"]; ok {
-				p.addClasses(attr)
-			}
-
-			if attr, ok := p.current.Attributes["id"]; ok {
-				p.addId(attr, p.current)
-			}
-
-			break
-		}
 	}
 
-	return currentIndex
+	return -1
 }
 
 func (p *Parser) addClasses(classes string) {
-	length := len(classes)
-
-	for i, k := 0, 0; i < length; i++ {
-		for k = i; i < length && classes[i] == ' '; {
-			i++
-			k++
-		}
-		for i < length && classes[i] != ' ' {
-			i++
-		}
-
-		id := "." + classes[k:i]
-		p.addTag(id, p.current)
+	for _, class := range strings.Fields(classes) {
+		p.addTag("."+class, p.current)
 	}
 }
 
@@ -903,7 +885,7 @@ func (p *Parser) computeOffsetList() []*Tag {
 	for _, tag := range p.offsetMap {
 		t = append(t, tag)
 	}
-
+	sort.Slice(t, func(i, j int) bool { return t[i].Tag.Start < t[j].Tag.Start })
 	if p.Done {
 		p.GetOffsetList = func() []*Tag {
 			return t
