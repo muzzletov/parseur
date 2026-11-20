@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 )
@@ -55,6 +56,10 @@ func (c *WebClient) SetUserAgent(agent string) {
 }
 
 func (c *WebClient) setup(r *Request) (*http.Request, *context.CancelFunc, error) {
+	if r.Url == nil {
+		return nil, nil, errors.New("parseur: request has no URL")
+	}
+
 	var reader bytes.Reader
 	var method = r.Method
 
@@ -129,9 +134,11 @@ func mergeHeaderFields(srcHeader *http.Header, dstHeader *http.Header) {
 		return
 	}
 
-	for u, i := range *srcHeader {
-		for _, z := range i {
-			dstHeader.Add(u, z)
+	for key, values := range *srcHeader {
+		dstHeader.Del(key)
+
+		for _, value := range values {
+			dstHeader.Add(key, value)
 		}
 	}
 }
@@ -140,7 +147,7 @@ func (c *WebClient) FetchParseSync(request *Request) (p *Parser, err error) {
 	err = c.FetchSync(request)
 
 	if request.Data == nil {
-		return nil, nil
+		return nil, err
 	}
 
 	parser := NewParser(request.Data, false, nil)
@@ -166,29 +173,7 @@ func (c *WebClient) prepare(request *Request) (*http.Request, error) {
 	return req, nil
 }
 
-func merge(old *[]byte, new *[]byte, length int, additionalLength int) *[]byte {
-	if cap(*old) > length+additionalLength {
-		*old = append(*old, (*new)[:additionalLength]...)
-
-		return old
-	}
-
-	newLength := length + additionalLength
-	var l = make([]byte, newLength, length+newLength)
-
-	for i := 0; i < length; i++ {
-		l[i] = (*old)[i]
-	}
-
-	for i := 0; i < additionalLength; i++ {
-		l[i+length] = (*new)[i]
-	}
-
-	return &l
-}
-
 func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
-
 	req, err := c.prepare(request)
 
 	if err != nil {
@@ -198,54 +183,72 @@ func (c *WebClient) FetchParseAsync(request *Request) (p *Parser, err error) {
 	resp, err := c.client.Do(req)
 
 	if err != nil {
+		(*request.CancelFunc)()
 		return nil, err
 	}
-	
+
 	defer resp.Body.Close()
-	
+
+	request.ResponseHeader = &resp.Header
+
 	buf := make([]byte, c.chunkSize)
 	data := make([]byte, 0, 4*c.chunkSize)
-	dataPtr := &data
-	reader := bufio.NewReader(resp.Body)
-	length := 0
 
-	p = NewParser(dataPtr, true, request.Hook)
+	snapshot := func() *[]byte {
+		view := data[:len(data):len(data)]
+		return &view
+	}
+
+	p = NewParser(snapshot(), true, request.Hook)
 	p.Request = request
-	p.length = 0
-	var n = 0
 
-	for !p.Done {
-		n, err = reader.Read(buf)
+	reader := bufio.NewReader(resp.Body)
 
-		if err == io.EOF {
-			break
-		}
+	var readErr error
 
-		if err != nil {
-			return nil, err
-		}
+	for !p.isDone() {
+		n, rerr := reader.Read(buf)
 
 		if n > 0 {
-			dataPtr = merge(dataPtr, &buf, length, n)
+			data = append(data, buf[:n]...)
+
+			select {
+			case p.DataChan <- snapshot():
+			default:
+			}
 		}
 
-		length += n
+		if rerr != nil {
+			if rerr != io.EOF {
+				readErr = rerr
+			}
 
-		select {
-		case p.DataChan <- dataPtr:
-		default:
+			break
 		}
 	}
 
 	(*request.CancelFunc)()
 
-	if !p.Done {
-		*p.Complete = true
-		p.DataChan <- dataPtr
+	if p.isDone() {
 		<-p.ParseComplete
+	} else {
+		p.setComplete()
+		final := snapshot()
+
+		for finished := false; !finished; {
+			select {
+			case p.DataChan <- final:
+			case <-p.ParseComplete:
+				finished = true
+			}
+		}
 	}
 
-	request.Data = dataPtr
+	if readErr != nil {
+		return nil, readErr
+	}
 
-	return p, err
+	request.Data = snapshot()
+
+	return p, nil
 }
